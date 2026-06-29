@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" role="img" aria-label="Neutral avatar">
+  <defs>
+    <linearGradient id="an_bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFD27A"/>
+      <stop offset="1" stop-color="#FFC542"/>
+    </linearGradient>
+  </defs>
+  <circle cx="64" cy="64" r="62" fill="url(#an_bg)"/>
+  <circle cx="64" cy="64" r="62" fill="none" stroke="#FFFFFF" stroke-width="3" opacity="0.4"/>
+  <!-- face -->
+  <circle cx="64" cy="58" r="30" fill="#FFE9D2"/>
+  <!-- hair tuft -->
+  <path d="M36 50 C40 28 88 28 92 50 C92 42 84 34 64 34 C44 34 36 42 36 50 Z" fill="#5B3FD6"/>
+  <!-- eyes -->
+  <circle cx="54" cy="58" r="4" fill="#2A2440"/>
+  <circle cx="74" cy="58" r="4" fill="#2A2440"/>
+  <!-- smile -->
+  <path d="M54 70 Q64 78 74 70" fill="none" stroke="#2A2440" stroke-width="3.5" stroke-linecap="round"/>
+  <!-- shoulders -->
+  <path d="M30 110 C30 92 46 86 64 86 C82 86 98 92 98 110 Z" fill="#5B3FD6"/>
+</svg>

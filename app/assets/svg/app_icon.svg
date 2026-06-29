@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024" role="img" aria-label="Ludo Friends app icon">
+  <defs>
+    <linearGradient id="ic_bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#6A4CE0"/>
+      <stop offset="1" stop-color="#8E6BFF"/>
+    </linearGradient>
+    <linearGradient id="ic_die" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#F1E9FF"/>
+    </linearGradient>
+    <radialGradient id="ic_shine" cx="0.32" cy="0.26" r="0.85">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.30"/>
+      <stop offset="0.5" stop-color="#FFFFFF" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- rounded-square background -->
+  <rect x="0" y="0" width="1024" height="1024" rx="224" fill="url(#ic_bg)"/>
+  <rect x="0" y="0" width="1024" height="1024" rx="224" fill="url(#ic_shine)"/>
+
+  <!-- soft halo -->
+  <circle cx="512" cy="500" r="360" fill="#FFFFFF" opacity="0.08"/>
+
+  <g transform="translate(512 500)">
+    <!-- four pawns arcing around the die -->
+    <!-- top (coral) -->
+    <g transform="translate(0 -300)">
+      <circle cx="0" cy="-26" r="46" fill="#FF6B6B"/>
+      <path d="M -52 78 C -52 12 -26 0 0 0 C 26 0 52 12 52 78 Z" fill="#FF6B6B"/>
+      <ellipse cx="-16" cy="-38" rx="14" ry="11" fill="#FFFFFF" opacity="0.55"/>
+    </g>
+    <!-- right (green) -->
+    <g transform="translate(300 0)">
+      <circle cx="0" cy="-26" r="46" fill="#2BD9A1"/>
+      <path d="M -52 78 C -52 12 -26 0 0 0 C 26 0 52 12 52 78 Z" fill="#2BD9A1"/>
+      <ellipse cx="-16" cy="-38" rx="14" ry="11" fill="#FFFFFF" opacity="0.55"/>
+    </g>
+    <!-- bottom (yellow) -->
+    <g transform="translate(0 300)">
+      <circle cx="0" cy="-26" r="46" fill="#FFB23E"/>
+      <path d="M -52 78 C -52 12 -26 0 0 0 C 26 0 52 12 52 78 Z" fill="#FFB23E"/>
+      <ellipse cx="-16" cy="-38" rx="14" ry="11" fill="#FFFFFF" opacity="0.55"/>
+    </g>
+    <!-- left (blue) -->
+    <g transform="translate(-300 0)">
+      <circle cx="0" cy="-26" r="46" fill="#3A86FF"/>
+      <path d="M -52 78 C -52 12 -26 0 0 0 C 26 0 52 12 52 78 Z" fill="#3A86FF"/>
+      <ellipse cx="-16" cy="-38" rx="14" ry="11" fill="#FFFFFF" opacity="0.55"/>
+    </g>
+
+    <!-- center die -->
+    <g transform="rotate(-12)">
+      <rect x="-150" y="-150" width="300" height="300" rx="78" fill="url(#ic_die)"/>
+      <rect x="-150" y="-150" width="300" height="300" rx="78" fill="none" stroke="#E7DCC8" stroke-width="6"/>
+      <circle cx="-66" cy="-66" r="27" fill="#5B3FD6"/>
+      <circle cx="66" cy="-66" r="27" fill="#FFC542"/>
+      <circle cx="0" cy="0" r="27" fill="#FF6B6B"/>
+      <circle cx="-66" cy="66" r="27" fill="#2BD9A1"/>
+      <circle cx="66" cy="66" r="27" fill="#3A86FF"/>
+    </g>
+  </g>
+</svg>

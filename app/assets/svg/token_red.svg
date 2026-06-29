@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" width="96" height="96" role="img" aria-label="Red token">
+  <defs>
+    <linearGradient id="tr_body" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FF7B80"/>
+      <stop offset="1" stop-color="#FF5A5F"/>
+    </linearGradient>
+    <linearGradient id="tr_base" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FF5A5F"/>
+      <stop offset="1" stop-color="#E03B45"/>
+    </linearGradient>
+  </defs>
+  <!-- ground shadow -->
+  <ellipse cx="48" cy="84" rx="26" ry="7" fill="#2A2440" opacity="0.18"/>
+  <!-- base disc -->
+  <rect x="22" y="70" width="52" height="14" rx="7" fill="url(#tr_base)"/>
+  <!-- pawn body (teardrop) -->
+  <path d="M48 14
+           C61 14 71 24 71 37
+           C71 49 60 53 55 64
+           C53 69 53 72 53 74
+           L43 74
+           C43 72 43 69 41 64
+           C36 53 25 49 25 37
+           C25 24 35 14 48 14 Z" fill="url(#tr_body)"/>
+  <!-- head highlight -->
+  <ellipse cx="42" cy="28" rx="6" ry="5" fill="#FFFFFF" opacity="0.45"/>
+  <!-- subtle inner ring -->
+  <circle cx="48" cy="37" r="13" fill="#FFFFFF" opacity="0.10"/>
+</svg>

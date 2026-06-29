@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Bot opponent">
+  <defs>
+    <linearGradient id="bo_g" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#8E6BFF"/>
+      <stop offset="1" stop-color="#5B3FD6"/>
+    </linearGradient>
+  </defs>
+  <!-- antenna -->
+  <line x1="32" y1="8" x2="32" y2="16" stroke="#3F2BA8" stroke-width="3" stroke-linecap="round"/>
+  <circle cx="32" cy="7" r="3.5" fill="#FFC542"/>
+  <!-- head -->
+  <rect x="14" y="16" width="36" height="30" rx="11" fill="url(#bo_g)" stroke="#3F2BA8" stroke-width="2.5"/>
+  <!-- eyes -->
+  <circle cx="25" cy="30" r="5.5" fill="#FFF7EC"/>
+  <circle cx="39" cy="30" r="5.5" fill="#FFF7EC"/>
+  <circle cx="25" cy="30" r="2.5" fill="#2A2440"/>
+  <circle cx="39" cy="30" r="2.5" fill="#2A2440"/>
+  <!-- mouth -->
+  <rect x="25" y="39" width="14" height="3.5" rx="1.75" fill="#FFC542"/>
+  <!-- ears -->
+  <rect x="9" y="26" width="5" height="12" rx="2.5" fill="#3F2BA8"/>
+  <rect x="50" y="26" width="5" height="12" rx="2.5" fill="#3F2BA8"/>
+  <!-- body hint -->
+  <rect x="22" y="46" width="20" height="10" rx="4" fill="#5B3FD6"/>
+</svg>

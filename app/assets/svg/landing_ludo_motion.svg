@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 240" role="img" aria-label="Ludo game pieces">
+  <defs>
+    <linearGradient id="board" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#F3EFFF"/>
+    </linearGradient>
+  </defs>
+
+  <circle cx="180" cy="120" r="108" fill="#FFFFFF" opacity=".16"/>
+  <circle cx="180" cy="120" r="84" fill="#FFFFFF" opacity=".12"/>
+
+  <rect x="107" y="72" width="146" height="146" rx="34" fill="#2B1B78" opacity=".18"/>
+  <g>
+    <rect x="107" y="61" width="146" height="146" rx="34" fill="url(#board)" stroke="#E7DCC8" stroke-width="4"/>
+    <path d="M128 84h104" stroke="#FFFFFF" stroke-width="20" stroke-linecap="round" opacity=".85"/>
+    <circle cx="146" cy="100" r="13" fill="#5B3FD6"/>
+    <circle cx="214" cy="100" r="13" fill="#FFC542"/>
+    <circle cx="180" cy="134" r="13" fill="#FF5F6D"/>
+    <circle cx="146" cy="168" r="13" fill="#2BD9A1"/>
+    <circle cx="214" cy="168" r="13" fill="#3A86FF"/>
+  </g>
+
+  <g>
+    <g transform="translate(180 32)">
+      <circle cx="0" cy="0" r="18" fill="#FF5F6D"/>
+      <path d="M-23 49c0-27 10-39 23-39s23 12 23 39z" fill="#FF5F6D"/>
+      <ellipse cx="-7" cy="-6" rx="6" ry="5" fill="#FFFFFF" opacity=".65"/>
+    </g>
+    <g transform="translate(290 122)">
+      <circle cx="0" cy="0" r="18" fill="#2BD9A1"/>
+      <path d="M-23 49c0-27 10-39 23-39s23 12 23 39z" fill="#2BD9A1"/>
+      <ellipse cx="-7" cy="-6" rx="6" ry="5" fill="#FFFFFF" opacity=".65"/>
+    </g>
+    <g transform="translate(180 204)">
+      <circle cx="0" cy="0" r="18" fill="#FFB23E"/>
+      <path d="M-23 49c0-27 10-39 23-39s23 12 23 39z" fill="#FFB23E"/>
+      <ellipse cx="-7" cy="-6" rx="6" ry="5" fill="#FFFFFF" opacity=".65"/>
+    </g>
+    <g transform="translate(70 122)">
+      <circle cx="0" cy="0" r="18" fill="#3A86FF"/>
+      <path d="M-23 49c0-27 10-39 23-39s23 12 23 39z" fill="#3A86FF"/>
+      <ellipse cx="-7" cy="-6" rx="6" ry="5" fill="#FFFFFF" opacity=".65"/>
+    </g>
+  </g>
+</svg>

@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120" role="img" aria-label="Die showing 2">
+  <defs>
+    <linearGradient id="d2_face" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#F4EEDF"/>
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="104" height="104" rx="26" fill="url(#d2_face)" stroke="#E7DCC8" stroke-width="3"/>
+  <rect x="16" y="15" width="88" height="40" rx="20" fill="#FFFFFF" opacity="0.5"/>
+  <circle cx="40" cy="40" r="11" fill="#FF5A5F"/>
+  <circle cx="80" cy="80" r="11" fill="#3A86FF"/>
+</svg>

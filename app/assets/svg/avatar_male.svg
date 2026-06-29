@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" role="img" aria-label="Male avatar">
+  <defs>
+    <linearGradient id="am_bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#6AA2FF"/>
+      <stop offset="1" stop-color="#3A86FF"/>
+    </linearGradient>
+  </defs>
+  <circle cx="64" cy="64" r="62" fill="url(#am_bg)"/>
+  <circle cx="64" cy="64" r="62" fill="none" stroke="#FFFFFF" stroke-width="3" opacity="0.4"/>
+  <!-- face -->
+  <circle cx="64" cy="58" r="30" fill="#FFE0C2"/>
+  <!-- short hair -->
+  <path d="M34 54 C34 30 94 30 94 54 C94 44 86 38 64 38 C42 38 34 44 34 54 Z" fill="#3A2D22"/>
+  <!-- eyes -->
+  <circle cx="54" cy="58" r="4" fill="#2A2440"/>
+  <circle cx="74" cy="58" r="4" fill="#2A2440"/>
+  <!-- smile -->
+  <path d="M55 70 Q64 77 73 70" fill="none" stroke="#2A2440" stroke-width="3.5" stroke-linecap="round"/>
+  <!-- eyebrows -->
+  <path d="M49 49 L59 50" stroke="#3A2D22" stroke-width="3" stroke-linecap="round"/>
+  <path d="M69 50 L79 49" stroke="#3A2D22" stroke-width="3" stroke-linecap="round"/>
+  <!-- shoulders / collar -->
+  <path d="M30 110 C30 92 46 86 64 86 C82 86 98 92 98 110 Z" fill="#2A2440"/>
+  <path d="M64 86 L56 100 L64 96 L72 100 Z" fill="#FFFFFF" opacity="0.9"/>
+</svg>

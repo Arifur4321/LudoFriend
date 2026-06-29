@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" role="img" aria-label="Female avatar">
+  <defs>
+    <linearGradient id="af_bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FF9A9E"/>
+      <stop offset="1" stop-color="#FF6B6B"/>
+    </linearGradient>
+  </defs>
+  <circle cx="64" cy="64" r="62" fill="url(#af_bg)"/>
+  <circle cx="64" cy="64" r="62" fill="none" stroke="#FFFFFF" stroke-width="3" opacity="0.4"/>
+  <!-- long hair back -->
+  <path d="M32 60 C32 34 96 34 96 60 C96 84 92 96 88 104 L84 104 C86 92 84 78 84 64 C84 64 78 50 64 50 C50 50 44 64 44 64 C44 78 42 92 44 104 L40 104 C36 96 32 84 32 60 Z" fill="#7A4B2A"/>
+  <!-- face -->
+  <circle cx="64" cy="60" r="29" fill="#FFE3CC"/>
+  <!-- bangs -->
+  <path d="M36 56 C36 34 92 34 92 56 C92 46 84 40 64 40 C44 40 36 46 36 56 Z" fill="#7A4B2A"/>
+  <!-- eyes -->
+  <circle cx="55" cy="60" r="4" fill="#2A2440"/>
+  <circle cx="73" cy="60" r="4" fill="#2A2440"/>
+  <!-- smile -->
+  <path d="M56 72 Q64 79 72 72" fill="none" stroke="#2A2440" stroke-width="3.5" stroke-linecap="round"/>
+  <!-- blush -->
+  <circle cx="48" cy="68" r="4" fill="#FF6B6B" opacity="0.35"/>
+  <circle cx="80" cy="68" r="4" fill="#FF6B6B" opacity="0.35"/>
+  <!-- shoulders -->
+  <path d="M30 110 C30 92 46 88 64 88 C82 88 98 92 98 110 Z" fill="#5B3FD6"/>
+</svg>

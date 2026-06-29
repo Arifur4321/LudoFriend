@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 240" width="320" height="240" role="img" aria-label="Nothing here yet">
+  <defs>
+    <linearGradient id="es_die" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#F4EEDF"/>
+    </linearGradient>
+  </defs>
+  <ellipse cx="160" cy="140" rx="124" ry="88" fill="#8E6BFF" opacity="0.10"/>
+
+  <!-- empty board frame -->
+  <g transform="translate(160 120)">
+    <ellipse cx="0" cy="70" rx="74" ry="12" fill="#2A2440" opacity="0.10"/>
+    <rect x="-62" y="-58" width="124" height="124" rx="22" fill="#FFF7EC" stroke="#E7DCC8" stroke-width="4"/>
+    <!-- dashed empty slots -->
+    <rect x="-44" y="-40" width="38" height="38" rx="9" fill="none" stroke="#E7DCC8" stroke-width="3" stroke-dasharray="5 6"/>
+    <rect x="6" y="-40" width="38" height="38" rx="9" fill="none" stroke="#E7DCC8" stroke-width="3" stroke-dasharray="5 6"/>
+    <rect x="-44" y="10" width="38" height="38" rx="9" fill="none" stroke="#E7DCC8" stroke-width="3" stroke-dasharray="5 6"/>
+    <rect x="6" y="10" width="38" height="38" rx="9" fill="none" stroke="#E7DCC8" stroke-width="3" stroke-dasharray="5 6"/>
+  </g>
+
+  <!-- floating friendly die -->
+  <g transform="translate(228 70) rotate(-14)">
+    <rect x="-22" y="-22" width="44" height="44" rx="13" fill="url(#es_die)" stroke="#E7DCC8" stroke-width="3"/>
+    <circle cx="-9" cy="-9" r="4" fill="#FF5A5F"/>
+    <circle cx="9" cy="9" r="4" fill="#3A86FF"/>
+    <circle cx="0" cy="0" r="4" fill="#FFB23E"/>
+  </g>
+  <!-- sparkle -->
+  <path d="M86 70 L88 76 L94 78 L88 80 L86 86 L84 80 L78 78 L84 76 Z" fill="#FFC542"/>
+</svg>

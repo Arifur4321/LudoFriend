@@ -1,0 +1,21 @@
+{
+  "@@locale": "hi",
+  "appName": "Ludo Friends",
+  "play": "खेलें",
+  "passAndPlay": "पास एंड प्ले",
+  "vsComputer": "कंप्यूटर के विरुद्ध",
+  "onlineMatch": "ऑनलाइन मैच",
+  "privateRoom": "प्राइवेट रूम",
+  "settings": "सेटिंग्स",
+  "leaderboard": "लीडरबोर्ड",
+  "profile": "प्रोफ़ाइल",
+  "howToPlay": "कैसे खेलें",
+  "continueAsGuest": "अतिथि के रूप में जारी रखें",
+  "signIn": "साइन इन",
+  "createAccount": "खाता बनाएं",
+  "roll": "रोल",
+  "yourTurn": "आपकी बारी",
+  "rematch": "फिर से खेलें",
+  "home": "होम",
+  "noConnection": "कोई कनेक्शन नहीं"
+}

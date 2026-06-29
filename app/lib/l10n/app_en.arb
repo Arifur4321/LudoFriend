@@ -1,0 +1,21 @@
+{
+  "@@locale": "en",
+  "appName": "Ludo Friends",
+  "play": "Play",
+  "passAndPlay": "Pass & Play",
+  "vsComputer": "Vs Computer",
+  "onlineMatch": "Online Match",
+  "privateRoom": "Private Room",
+  "settings": "Settings",
+  "leaderboard": "Leaderboard",
+  "profile": "Profile",
+  "howToPlay": "How to Play",
+  "continueAsGuest": "Continue as Guest",
+  "signIn": "Sign In",
+  "createAccount": "Create Account",
+  "roll": "Roll",
+  "yourTurn": "Your turn",
+  "rematch": "Rematch",
+  "home": "Home",
+  "noConnection": "No connection"
+}

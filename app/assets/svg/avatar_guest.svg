@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" role="img" aria-label="Guest avatar">
+  <defs>
+    <linearGradient id="ag_bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#8E6BFF"/>
+      <stop offset="1" stop-color="#5B3FD6"/>
+    </linearGradient>
+  </defs>
+  <circle cx="64" cy="64" r="62" fill="url(#ag_bg)"/>
+  <circle cx="64" cy="64" r="62" fill="none" stroke="#FFFFFF" stroke-width="3" opacity="0.35"/>
+  <!-- silhouette -->
+  <circle cx="64" cy="52" r="22" fill="#FFF7EC" opacity="0.92"/>
+  <path d="M28 104 C28 82 44 74 64 74 C84 74 100 82 100 104 Z" fill="#FFF7EC" opacity="0.92"/>
+  <!-- question mark badge for guest -->
+  <circle cx="92" cy="92" r="18" fill="#FFC542"/>
+  <text x="92" y="99" text-anchor="middle" font-family="'Baloo 2','Nunito',sans-serif" font-weight="800" font-size="22" fill="#2A2440">?</text>
+</svg>

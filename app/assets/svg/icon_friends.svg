@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Friends">
+  <!-- back friend -->
+  <g opacity="0.95">
+    <circle cx="42" cy="24" r="9" fill="#2BD9A1"/>
+    <path d="M28 50 C28 38 36 34 44 34 C52 34 58 38 58 50 Z" fill="#2BD9A1"/>
+  </g>
+  <!-- front friend -->
+  <circle cx="24" cy="22" r="11" fill="#5B3FD6"/>
+  <path d="M6 52 C6 38 15 33 24 33 C33 33 42 38 42 52 Z" fill="#5B3FD6"/>
+  <!-- highlight -->
+  <ellipse cx="19" cy="18" rx="3.5" ry="2.5" fill="#FFFFFF" opacity="0.4"/>
+  <!-- friendship spark -->
+  <path d="M48 8 L49.5 12 L53.5 12.5 L50.5 15 L51.5 19 L48 16.8 L44.5 19 L45.5 15 L42.5 12.5 L46.5 12 Z" fill="#FFC542"/>
+</svg>

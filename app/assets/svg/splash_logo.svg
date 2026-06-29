@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="Ludo Friends splash">
+  <defs>
+    <linearGradient id="sp_die" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#F1E9FF"/>
+    </linearGradient>
+    <linearGradient id="sp_text" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#EFE7FF"/>
+    </linearGradient>
+  </defs>
+
+  <g transform="translate(256 210)">
+    <!-- soft halo -->
+    <circle cx="0" cy="0" r="170" fill="#8E6BFF" opacity="0.16"/>
+
+    <!-- four pawns arcing around the die -->
+    <g transform="translate(0 -148)">
+      <circle cx="0" cy="-13" r="22" fill="#FF6B6B"/>
+      <path d="M -25 37 C -25 6 -12 0 0 0 C 12 0 25 6 25 37 Z" fill="#FF6B6B"/>
+      <ellipse cx="-8" cy="-18" rx="7" ry="5.5" fill="#FFFFFF" opacity="0.55"/>
+    </g>
+    <g transform="translate(148 0)">
+      <circle cx="0" cy="-13" r="22" fill="#2BD9A1"/>
+      <path d="M -25 37 C -25 6 -12 0 0 0 C 12 0 25 6 25 37 Z" fill="#2BD9A1"/>
+      <ellipse cx="-8" cy="-18" rx="7" ry="5.5" fill="#FFFFFF" opacity="0.55"/>
+    </g>
+    <g transform="translate(0 148)">
+      <circle cx="0" cy="-13" r="22" fill="#FFB23E"/>
+      <path d="M -25 37 C -25 6 -12 0 0 0 C 12 0 25 6 25 37 Z" fill="#FFB23E"/>
+      <ellipse cx="-8" cy="-18" rx="7" ry="5.5" fill="#FFFFFF" opacity="0.55"/>
+    </g>
+    <g transform="translate(-148 0)">
+      <circle cx="0" cy="-13" r="22" fill="#3A86FF"/>
+      <path d="M -25 37 C -25 6 -12 0 0 0 C 12 0 25 6 25 37 Z" fill="#3A86FF"/>
+      <ellipse cx="-8" cy="-18" rx="7" ry="5.5" fill="#FFFFFF" opacity="0.55"/>
+    </g>
+
+    <!-- center die -->
+    <g transform="rotate(-12)">
+      <rect x="-74" y="-74" width="148" height="148" rx="40" fill="url(#sp_die)" stroke="#E7DCC8" stroke-width="3"/>
+      <circle cx="-32" cy="-32" r="13" fill="#5B3FD6"/>
+      <circle cx="32" cy="-32" r="13" fill="#FFC542"/>
+      <circle cx="0" cy="0" r="13" fill="#FF6B6B"/>
+      <circle cx="-32" cy="32" r="13" fill="#2BD9A1"/>
+      <circle cx="32" cy="32" r="13" fill="#3A86FF"/>
+    </g>
+  </g>
+
+  <!-- wordmark (intended over purple splash bg) -->
+  <text x="256" y="446" text-anchor="middle" font-family="'Baloo 2','Nunito','Segoe UI',sans-serif" font-weight="800" font-size="52" fill="url(#sp_text)" letter-spacing=".5">Ludo Friends</text>
+  <rect x="196" y="462" width="120" height="6" rx="3" fill="#FFC542"/>
+</svg>

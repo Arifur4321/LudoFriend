@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 240" width="320" height="240" role="img" aria-label="Something went wrong">
+  <defs>
+    <linearGradient id="er_coral" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FF8A8A"/>
+      <stop offset="1" stop-color="#FF6B6B"/>
+    </linearGradient>
+  </defs>
+  <ellipse cx="160" cy="140" rx="120" ry="86" fill="#FF6B6B" opacity="0.10"/>
+
+  <!-- tipped-over pawn -->
+  <g transform="translate(120 160) rotate(-26)">
+    <ellipse cx="0" cy="52" rx="34" ry="9" fill="#2A2440" opacity="0.12"/>
+    <path d="M0 -10 C15 -10 26 1 26 16 C26 30 13 35 7 48 C5 52 5 54 5 54 L-5 54 C-5 54 -5 52 -7 48 C-13 35 -26 30 -26 16 C-26 1 -15 -10 0 -10 Z" fill="url(#er_coral)"/>
+    <!-- dizzy eyes -->
+    <path d="M-12 12 l6 6 M-6 12 l-6 6" stroke="#FFF7EC" stroke-width="2.6" stroke-linecap="round"/>
+    <path d="M6 12 l6 6 M12 12 l-6 6" stroke="#FFF7EC" stroke-width="2.6" stroke-linecap="round"/>
+    <path d="M-8 30 Q0 25 8 30" fill="none" stroke="#FFF7EC" stroke-width="3" stroke-linecap="round"/>
+  </g>
+
+  <!-- warning triangle -->
+  <g transform="translate(206 96)">
+    <path d="M0 -34 L34 26 L-34 26 Z" fill="#FFC542" stroke="#E8901C" stroke-width="3" stroke-linejoin="round"/>
+    <rect x="-4" y="-12" width="8" height="22" rx="4" fill="#2A2440"/>
+    <circle cx="0" cy="17" r="4" fill="#2A2440"/>
+  </g>
+</svg>

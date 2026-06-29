@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" width="96" height="96" role="img" aria-label="Yellow token active">
+  <defs>
+    <linearGradient id="tyg_body" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFC766"/>
+      <stop offset="1" stop-color="#FFB23E"/>
+    </linearGradient>
+    <linearGradient id="tyg_base" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFB23E"/>
+      <stop offset="1" stop-color="#E8901C"/>
+    </linearGradient>
+    <radialGradient id="tyg_halo" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0.55" stop-color="#FFB23E" stop-opacity="0.0"/>
+      <stop offset="0.78" stop-color="#FFB23E" stop-opacity="0.38"/>
+      <stop offset="1" stop-color="#FFB23E" stop-opacity="0.0"/>
+    </radialGradient>
+  </defs>
+  <circle cx="48" cy="44" r="46" fill="url(#tyg_halo)"/>
+  <circle cx="48" cy="46" r="40" fill="none" stroke="#FFB23E" stroke-width="3" opacity="0.6"/>
+  <circle cx="48" cy="46" r="40" fill="none" stroke="#FFFFFF" stroke-width="1.5" opacity="0.5" stroke-dasharray="4 7"/>
+  <ellipse cx="48" cy="84" rx="26" ry="7" fill="#2A2440" opacity="0.18"/>
+  <rect x="22" y="70" width="52" height="14" rx="7" fill="url(#tyg_base)"/>
+  <path d="M48 14 C61 14 71 24 71 37 C71 49 60 53 55 64 C53 69 53 72 53 74 L43 74 C43 72 43 69 41 64 C36 53 25 49 25 37 C25 24 35 14 48 14 Z" fill="url(#tyg_body)"/>
+  <ellipse cx="42" cy="28" rx="6" ry="5" fill="#FFFFFF" opacity="0.45"/>
+  <circle cx="48" cy="37" r="13" fill="#FFFFFF" opacity="0.10"/>
+</svg>

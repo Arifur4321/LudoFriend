@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 160" width="480" height="160" role="img" aria-label="Ludo Friends">
+  <defs>
+    <linearGradient id="lg_die" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#F1E9FF"/>
+    </linearGradient>
+    <linearGradient id="lg_purple" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#8E6BFF"/>
+      <stop offset="1" stop-color="#5B3FD6"/>
+    </linearGradient>
+    <linearGradient id="lg_text" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#5B3FD6"/>
+      <stop offset="1" stop-color="#3F2BA8"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Mark: four pawns arcing around a die -->
+  <g transform="translate(74 80)">
+    <!-- soft halo -->
+    <circle cx="0" cy="0" r="58" fill="#8E6BFF" opacity="0.12"/>
+
+    <!-- four pawns around the die (top, right, bottom, left) -->
+    <!-- top pawn (coral) -->
+    <g transform="translate(0 -50)">
+      <circle cx="0" cy="-4" r="7" fill="#FF6B6B"/>
+      <path d="M -8 12 C -8 2 -4 0 0 0 C 4 0 8 2 8 12 Z" fill="#FF6B6B"/>
+      <circle cx="-2.5" cy="-6" r="2.2" fill="#FFFFFF" opacity="0.55"/>
+    </g>
+    <!-- right pawn (green) -->
+    <g transform="translate(50 0)">
+      <circle cx="0" cy="-4" r="7" fill="#2BD9A1"/>
+      <path d="M -8 12 C -8 2 -4 0 0 0 C 4 0 8 2 8 12 Z" fill="#2BD9A1"/>
+      <circle cx="-2.5" cy="-6" r="2.2" fill="#FFFFFF" opacity="0.55"/>
+    </g>
+    <!-- bottom pawn (yellow) -->
+    <g transform="translate(0 50)">
+      <circle cx="0" cy="-4" r="7" fill="#FFB23E"/>
+      <path d="M -8 12 C -8 2 -4 0 0 0 C 4 0 8 2 8 12 Z" fill="#FFB23E"/>
+      <circle cx="-2.5" cy="-6" r="2.2" fill="#FFFFFF" opacity="0.55"/>
+    </g>
+    <!-- left pawn (blue) -->
+    <g transform="translate(-50 0)">
+      <circle cx="0" cy="-4" r="7" fill="#3A86FF"/>
+      <path d="M -8 12 C -8 2 -4 0 0 0 C 4 0 8 2 8 12 Z" fill="#3A86FF"/>
+      <circle cx="-2.5" cy="-6" r="2.2" fill="#FFFFFF" opacity="0.55"/>
+    </g>
+
+    <!-- center die -->
+    <g transform="rotate(-12)">
+      <rect x="-24" y="-24" width="48" height="48" rx="13" fill="url(#lg_die)" stroke="#E7DCC8" stroke-width="2"/>
+      <circle cx="-10" cy="-10" r="4.4" fill="#5B3FD6"/>
+      <circle cx="10" cy="-10" r="4.4" fill="#FFC542"/>
+      <circle cx="0" cy="0" r="4.4" fill="#FF6B6B"/>
+      <circle cx="-10" cy="10" r="4.4" fill="#2BD9A1"/>
+      <circle cx="10" cy="10" r="4.4" fill="#3A86FF"/>
+    </g>
+  </g>
+
+  <!-- Wordmark -->
+  <g transform="translate(150 0)">
+    <text x="0" y="74" font-family="'Baloo 2','Nunito','Segoe UI',sans-serif" font-weight="800" font-size="50" fill="url(#lg_text)" letter-spacing=".5">Ludo</text>
+    <text x="0" y="120" font-family="'Baloo 2','Nunito','Segoe UI',sans-serif" font-weight="800" font-size="50" fill="url(#lg_purple)" letter-spacing=".5">Friends</text>
+    <!-- accent underline dash -->
+    <rect x="2" y="130" width="120" height="7" rx="3.5" fill="#FFC542"/>
+    <circle cx="135" cy="133.5" r="5" fill="#FF6B6B"/>
+  </g>
+</svg>

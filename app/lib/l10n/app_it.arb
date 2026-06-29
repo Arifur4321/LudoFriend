@@ -1,0 +1,21 @@
+{
+  "@@locale": "it",
+  "appName": "Ludo Friends",
+  "play": "Gioca",
+  "passAndPlay": "Passa e gioca",
+  "vsComputer": "Contro il computer",
+  "onlineMatch": "Partita online",
+  "privateRoom": "Stanza privata",
+  "settings": "Impostazioni",
+  "leaderboard": "Classifica",
+  "profile": "Profilo",
+  "howToPlay": "Come si gioca",
+  "continueAsGuest": "Continua come ospite",
+  "signIn": "Accedi",
+  "createAccount": "Crea account",
+  "roll": "Lancia",
+  "yourTurn": "Il tuo turno",
+  "rematch": "Rivincita",
+  "home": "Home",
+  "noConnection": "Nessuna connessione"
+}

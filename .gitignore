@@ -1,0 +1,32 @@
+# Top-level ignores (each subproject also has its own .gitignore)
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+.idea/
+.vscode/
+*.iml
+
+# Secrets — never commit
+*.env
+.env
+!.env.example
+
+# Flutter / Dart (app/)
+app/.dart_tool/
+app/.flutter-plugins
+app/.flutter-plugins-dependencies
+app/build/
+app/.packages
+app/ios/Pods/
+app/android/.gradle/
+app/**/GeneratedPluginRegistrant.*
+
+# Laravel (backend/)
+backend/vendor/
+backend/node_modules/
+backend/storage/*.key
+backend/public/storage
+backend/.phpunit.result.cache

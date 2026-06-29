@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Trophy">
+  <defs>
+    <linearGradient id="tp_g" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFD876"/>
+      <stop offset="1" stop-color="#FFB23E"/>
+    </linearGradient>
+  </defs>
+  <!-- handles -->
+  <path d="M18 16 C8 16 8 30 20 32" fill="none" stroke="#E8901C" stroke-width="4" stroke-linecap="round"/>
+  <path d="M46 16 C56 16 56 30 44 32" fill="none" stroke="#E8901C" stroke-width="4" stroke-linecap="round"/>
+  <!-- cup -->
+  <path d="M16 12 H48 V22 C48 34 40 40 32 40 C24 40 16 34 16 22 Z" fill="url(#tp_g)" stroke="#E8901C" stroke-width="2.5"/>
+  <!-- stem + base -->
+  <rect x="29" y="40" width="6" height="9" fill="#E8901C"/>
+  <rect x="20" y="49" width="24" height="6" rx="3" fill="#E8901C"/>
+  <rect x="23" y="55" width="18" height="4" rx="2" fill="#C97A14"/>
+  <!-- star -->
+  <path d="M32 18 L34 23 L39.5 23.4 L35.4 27 L36.6 32 L32 29.2 L27.4 32 L28.6 27 L24.5 23.4 L30 23 Z" fill="#FFFFFF" opacity="0.9"/>
+</svg>

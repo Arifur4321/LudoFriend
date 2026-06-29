@@ -1,0 +1,21 @@
+{
+  "@@locale": "bn",
+  "appName": "Ludo Friends",
+  "play": "খেলুন",
+  "passAndPlay": "পাস অ্যান্ড প্লে",
+  "vsComputer": "কম্পিউটারের বিরুদ্ধে",
+  "onlineMatch": "অনলাইন ম্যাচ",
+  "privateRoom": "প্রাইভেট রুম",
+  "settings": "সেটিংস",
+  "leaderboard": "লিডারবোর্ড",
+  "profile": "প্রোফাইল",
+  "howToPlay": "কিভাবে খেলবেন",
+  "continueAsGuest": "অতিথি হিসেবে চালিয়ে যান",
+  "signIn": "সাইন ইন",
+  "createAccount": "অ্যাকাউন্ট তৈরি করুন",
+  "roll": "রোল",
+  "yourTurn": "আপনার পালা",
+  "rematch": "পুনরায় খেলুন",
+  "home": "হোম",
+  "noConnection": "কোন সংযোগ নেই"
+}

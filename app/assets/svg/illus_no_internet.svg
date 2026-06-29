@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 240" width="320" height="240" role="img" aria-label="No internet connection">
+  <defs>
+    <linearGradient id="ni_pawn" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#8E6BFF"/>
+      <stop offset="1" stop-color="#5B3FD6"/>
+    </linearGradient>
+  </defs>
+  <!-- soft backdrop blob -->
+  <ellipse cx="160" cy="135" rx="120" ry="86" fill="#8E6BFF" opacity="0.10"/>
+
+  <!-- wifi arcs (broken) -->
+  <g transform="translate(160 96)" fill="none" stroke-linecap="round">
+    <path d="M-46 -8 A66 66 0 0 1 -14 -34" stroke="#5B3FD6" stroke-width="9" opacity="0.85"/>
+    <path d="M14 -34 A66 66 0 0 1 46 -8" stroke="#E7DCC8" stroke-width="9"/>
+    <path d="M-28 6 A40 40 0 0 1 -8 -8" stroke="#5B3FD6" stroke-width="9" opacity="0.85"/>
+    <path d="M8 -8 A40 40 0 0 1 28 6" stroke="#E7DCC8" stroke-width="9"/>
+    <circle cx="0" cy="18" r="8" fill="#5B3FD6"/>
+  </g>
+
+  <!-- sad pawn -->
+  <g transform="translate(160 150)">
+    <ellipse cx="0" cy="58" rx="38" ry="9" fill="#2A2440" opacity="0.12"/>
+    <path d="M0 -10 C16 -10 28 2 28 18 C28 33 14 38 8 52 C6 56 6 58 6 58 L-6 58 C-6 58 -6 56 -8 52 C-14 38 -28 33 -28 18 C-28 2 -16 -10 0 -10 Z" fill="url(#ni_pawn)"/>
+    <!-- sad eyes -->
+    <circle cx="-9" cy="14" r="3" fill="#FFF7EC"/>
+    <circle cx="9" cy="14" r="3" fill="#FFF7EC"/>
+    <!-- frown -->
+    <path d="M-9 28 Q0 22 9 28" fill="none" stroke="#FFF7EC" stroke-width="3" stroke-linecap="round"/>
+  </g>
+
+  <!-- exclamation badge -->
+  <g transform="translate(214 78)">
+    <circle cx="0" cy="0" r="16" fill="#FFC542"/>
+    <rect x="-2.5" y="-9" width="5" height="11" rx="2.5" fill="#2A2440"/>
+    <circle cx="0" cy="7" r="2.6" fill="#2A2440"/>
+  </g>
+</svg>
