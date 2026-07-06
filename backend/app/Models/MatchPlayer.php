@@ -14,9 +14,12 @@ class MatchPlayer extends Model
         'match_id',
         'user_id',
         'color',
+        'team',
         'seat',
         'is_bot',
         'placement',
+        'stake_paid',
+        'payout',
         'disconnected_at',
         'reconnected_at',
     ];
@@ -25,8 +28,11 @@ class MatchPlayer extends Model
     {
         return [
             'seat' => 'integer',
+            'team' => 'integer',
             'is_bot' => 'boolean',
             'placement' => 'integer',
+            'stake_paid' => 'integer',
+            'payout' => 'integer',
             'disconnected_at' => 'datetime',
             'reconnected_at' => 'datetime',
         ];

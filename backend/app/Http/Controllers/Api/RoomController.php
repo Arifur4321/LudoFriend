@@ -21,11 +21,18 @@ class RoomController extends Controller
     }
 
     /** Create a room (the caller becomes host + seat 0). */
-    public function create(CreateRoomRequest $request): RoomResource
+    public function create(CreateRoomRequest $request): JsonResponse
     {
-        $room = $this->rooms->create($request->user(), $request->validated());
+        try {
+            $room = $this->rooms->create($request->user(), $request->validated());
+        } catch (RuntimeException $e) {
+            // Staked-board guard rails (affordability, no bots, bad tier/mode).
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
 
-        return new RoomResource($room->load('players.user'));
+        return (new RoomResource($room->load('players.user')))
+            ->response()
+            ->setStatusCode(201);
     }
 
     /** Join a room by code. Enforces capacity (cannot join a full room). */

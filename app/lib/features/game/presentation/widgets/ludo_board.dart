@@ -10,6 +10,7 @@ import '../../../../game_engine/models/ludo_color.dart';
 import '../../../../game_engine/models/move_result.dart';
 import '../../../../game_engine/models/token.dart';
 import '../../../../game_engine/rules/rule_config.dart';
+import '../../../../shared/theme/board_theme.dart';
 import '../../application/game_controller.dart';
 import 'board_painter.dart';
 import 'token_piece.dart';
@@ -80,6 +81,7 @@ class _LudoBoardState extends ConsumerState<LudoBoard>
   Widget build(BuildContext context) {
     final session = ref.watch(gameControllerProvider);
     final controller = ref.read(gameControllerProvider.notifier);
+    final boardTheme = ref.watch(activeBoardThemeProvider);
     final game = session.game;
 
     if (session.isMoving &&
@@ -132,7 +134,7 @@ class _LudoBoardState extends ConsumerState<LudoBoard>
         final children = <Widget>[
           CustomPaint(
             size: Size.square(side),
-            painter: BoardPainter(highlightCells: highlights),
+            painter: BoardPainter(highlightCells: highlights, theme: boardTheme),
           ),
         ];
 

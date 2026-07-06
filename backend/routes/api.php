@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\AdminController;
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\BoardController;
 use App\Http\Controllers\Api\FriendController;
 use App\Http\Controllers\Api\GameController;
 use App\Http\Controllers\Api\LeaderboardController;
@@ -9,6 +10,9 @@ use App\Http\Controllers\Api\MatchmakingController;
 use App\Http\Controllers\Api\ProfileController;
 use App\Http\Controllers\Api\ReportController;
 use App\Http\Controllers\Api\RoomController;
+use App\Http\Controllers\Api\SpinController;
+use App\Http\Controllers\Api\StoreController;
+use App\Http\Controllers\Api\WalletController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -34,6 +38,7 @@ Route::prefix('v1')->group(function () {
         Route::post('login', [AuthController::class, 'login']);
         Route::post('guest', [AuthController::class, 'guest']);
         Route::post('facebook', [AuthController::class, 'facebook']);
+        Route::post('google', [AuthController::class, 'google']);
     });
 
     /* ---------------------------------------------------------------
@@ -62,6 +67,19 @@ Route::prefix('v1')->group(function () {
 
             // Reports
             Route::post('reports', [ReportController::class, 'store']);
+
+            // Economy — wallet, staked boards, coin store, spin availability.
+            Route::get('wallet', [WalletController::class, 'show']);
+            Route::get('wallet/transactions', [WalletController::class, 'transactions']);
+            Route::get('boards', [BoardController::class, 'index']);
+            Route::get('store/packs', [StoreController::class, 'packs']);
+            Route::get('spin/status', [SpinController::class, 'status']);
+        });
+
+        // Economy mutations (tighter game-rate limit).
+        Route::middleware('throttle:30,1')->group(function () {
+            Route::post('spin', [SpinController::class, 'spin']);
+            Route::post('store/purchase', [StoreController::class, 'purchase']);
         });
 
         // Rooms — creation/show at api rate; join at game rate.

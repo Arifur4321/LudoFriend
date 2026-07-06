@@ -14,6 +14,8 @@ class MatchmakingTicket extends Model
     protected $fillable = [
         'user_id',
         'mode',
+        'board_tier',
+        'stake',
         'status',
         'room_id',
         'rating',
@@ -23,6 +25,7 @@ class MatchmakingTicket extends Model
     protected function casts(): array
     {
         return [
+            'stake' => 'integer',
             'rating' => 'integer',
             'enqueued_at' => 'datetime',
         ];

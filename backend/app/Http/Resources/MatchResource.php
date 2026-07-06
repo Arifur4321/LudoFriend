@@ -13,6 +13,10 @@ class MatchResource extends JsonResource
             'id' => $this->id,
             'room_id' => $this->room_id,
             'mode' => $this->mode,
+            'board_tier' => $this->board_tier,
+            'stake' => (int) $this->stake,
+            'pot' => (int) $this->pot,
+            'team_mode' => (bool) $this->team_mode,
             'status' => $this->status,
             'winner_user_id' => $this->winner_user_id,
             'seed' => $this->seed,
@@ -21,9 +25,11 @@ class MatchResource extends JsonResource
             'players' => $this->whenLoaded('players', fn () => $this->players->map(fn ($p) => [
                 'user_id' => $p->user_id,
                 'color' => $p->color,
+                'team' => $p->team !== null ? (int) $p->team : null,
                 'seat' => (int) $p->seat,
                 'is_bot' => (bool) $p->is_bot,
                 'placement' => $p->placement,
+                'payout' => (int) $p->payout,
             ])),
             // Authoritative state snapshot (token map, turn, phase, dice...).
             'state' => $this->whenLoaded('state', fn () => optional($this->state)->state),

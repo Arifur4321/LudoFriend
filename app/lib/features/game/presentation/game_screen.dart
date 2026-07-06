@@ -107,6 +107,10 @@ class GameScreen extends ConsumerWidget {
       rules: config.rules,
       seed: DateTime.now().millisecondsSinceEpoch,
       autoMoveSingle: config.autoMoveSingle,
+      // Preserve the chosen board so a rematch stays on the same table.
+      boardThemeKey: config.boardThemeKey,
+      stake: config.stake,
+      teamMode: config.teamMode,
     );
   }
 

@@ -10,6 +10,7 @@ import '../../../shared/theme/app_colors.dart';
 import '../../../shared/theme/app_text_styles.dart';
 import '../../../shared/widgets/app_assets.dart';
 import '../../../shared/widgets/app_background.dart';
+import '../../../shared/widgets/ludo_loader.dart';
 import '../../../shared/widgets/primary_button.dart';
 import '../application/auth_controller.dart';
 
@@ -21,17 +22,26 @@ class LoginScreen extends ConsumerStatefulWidget {
 }
 
 class _LoginScreenState extends ConsumerState<LoginScreen>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   final _email = TextEditingController();
   final _password = TextEditingController();
+
+  // Continuous gentle idle motion for the hero.
   late final AnimationController _animation = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 2600),
   )..repeat();
 
+  // One-shot spin-in entrance for the hero.
+  late final AnimationController _entrance = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1100),
+  )..forward();
+
   @override
   void dispose() {
     _animation.dispose();
+    _entrance.dispose();
     _email.dispose();
     _password.dispose();
     super.dispose();
@@ -71,15 +81,18 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
         : null;
 
     return Scaffold(
-      body: AppBackground(
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          AppBackground(
         child: SafeArea(
           child: SingleChildScrollView(
             padding: const EdgeInsets.all(24),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const SizedBox(height: 10),
-                _LandingLudoAnimation(animation: _animation),
+                const SizedBox(height: 6),
+                _LandingLudoHero(entrance: _entrance, idle: _animation),
                 const SizedBox(height: 10),
                 Text('Ludo Friends',
                     style: AppTextStyles.display, textAlign: TextAlign.center),
@@ -160,8 +173,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                 const SizedBox(height: 22),
                 PrimaryButton(
                     label: 'Login with Email',
-                    loading: loading,
-                    onPressed: _login),
+                    onPressed: loading ? null : _login),
                 const SizedBox(height: 18),
                 TextButton(
                   onPressed: () => context.push(AppRoutes.register),
@@ -173,28 +185,48 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
           ),
         ),
       ),
+          LudoLoadingOverlay(visible: loading, message: 'Signing you in…'),
+        ],
+      ),
     );
   }
 }
 
-class _LandingLudoAnimation extends StatelessWidget {
-  const _LandingLudoAnimation({required this.animation});
+/// The hero ludo illustration. On first build it spins in (a couple of turns
+/// while scaling + fading up), settles upright, then keeps a subtle idle float.
+class _LandingLudoHero extends StatelessWidget {
+  const _LandingLudoHero({required this.entrance, required this.idle});
 
-  final Animation<double> animation;
+  final Animation<double> entrance; // one-shot 0→1
+  final Animation<double> idle; // continuous 0→1 loop
 
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      height: 190,
+      height: 150,
       child: AnimatedBuilder(
-        animation: animation,
+        animation: Listenable.merge([entrance, idle]),
         builder: (context, child) {
-          final t = animation.value * math.pi * 2;
-          return Transform.translate(
-            offset: Offset(0, math.sin(t) * 7),
-            child: Transform.rotate(
-              angle: math.sin(t * 0.7) * 0.035,
-              child: child,
+          // Entrance: ease-out spin + scale + fade.
+          final e = Curves.easeOutCubic.transform(entrance.value);
+          final settle = Curves.easeOutBack.transform(entrance.value.clamp(0.0, 1.0));
+          final spinIn = (1 - e) * (2 * math.pi * 2); // ~2 turns, unwinding to 0
+          final scale = 0.35 + 0.65 * settle;
+          final opacity = e;
+
+          // Idle float (only once mostly settled, scaled by entrance progress).
+          final t = idle.value * math.pi * 2;
+          final floatY = math.sin(t) * 6 * e;
+          final wobble = math.sin(t * 0.7) * 0.03 * e;
+
+          return Opacity(
+            opacity: opacity.clamp(0.0, 1.0),
+            child: Transform.translate(
+              offset: Offset(0, floatY),
+              child: Transform.rotate(
+                angle: spinIn + wobble,
+                child: Transform.scale(scale: scale, child: child),
+              ),
             ),
           );
         },

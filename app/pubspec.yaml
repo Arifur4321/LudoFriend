@@ -25,6 +25,9 @@ dependencies:
   # Storage
   flutter_secure_storage: ^9.2.2
   shared_preferences: ^2.3.2
+  # On-device SQLite cache (last-known coins, free-spin timer, selected board).
+  sqflite: ^2.3.3
+  path: ^1.9.0
 
   # Rendering / assets
   flutter_svg: ^2.0.10+1

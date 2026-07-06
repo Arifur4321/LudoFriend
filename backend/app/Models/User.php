@@ -140,6 +140,17 @@ class User extends Authenticatable
         return $this->hasMany(Purchase::class);
     }
 
+    /** Append-only coin ledger for this user. */
+    public function walletTransactions(): HasMany
+    {
+        return $this->hasMany(WalletTransaction::class);
+    }
+
+    public function dailySpins(): HasMany
+    {
+        return $this->hasMany(DailySpin::class);
+    }
+
     public function reportsMade(): HasMany
     {
         return $this->hasMany(Report::class, 'reporter_user_id');

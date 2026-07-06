@@ -13,8 +13,12 @@ class CreateRoomRequest extends FormRequest
 
     public function rules(): array
     {
+        $tierKeys = array_column((array) config('economy.tiers', []), 'key');
+
         return [
             'mode' => ['required', 'in:2p,4p'],
+            'board_tier' => ['nullable', 'string', 'in:'.implode(',', $tierKeys)],
+            'team_mode' => ['boolean'],
             'visibility' => ['required', 'in:public,private'],
             'bot_fill' => ['boolean'],
             'turn_timer_seconds' => ['nullable', 'integer', 'min:5', 'max:120'],

@@ -15,6 +15,7 @@ class GameRoomPlayer extends Model
         'user_id',
         'seat',
         'color',
+        'team',
         'is_bot',
         'is_ready',
         'joined_at',
@@ -24,6 +25,7 @@ class GameRoomPlayer extends Model
     {
         return [
             'seat' => 'integer',
+            'team' => 'integer',
             'is_bot' => 'boolean',
             'is_ready' => 'boolean',
             'joined_at' => 'datetime',

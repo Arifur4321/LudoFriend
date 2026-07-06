@@ -13,6 +13,7 @@ class RoomPlayerResource extends JsonResource
             'id' => $this->id,
             'seat' => (int) $this->seat,
             'color' => $this->color,
+            'team' => $this->team !== null ? (int) $this->team : null,
             'is_bot' => (bool) $this->is_bot,
             'is_ready' => (bool) $this->is_ready,
             'user' => $this->when(

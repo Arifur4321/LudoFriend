@@ -16,6 +16,9 @@ class GameRoom extends Model
         'code',
         'host_user_id',
         'mode',
+        'board_tier',
+        'stake',
+        'team_mode',
         'visibility',
         'bot_fill',
         'turn_timer_seconds',
@@ -26,6 +29,8 @@ class GameRoom extends Model
     protected function casts(): array
     {
         return [
+            'stake' => 'integer',
+            'team_mode' => 'boolean',
             'bot_fill' => 'boolean',
             'turn_timer_seconds' => 'integer',
             'settings' => 'array',

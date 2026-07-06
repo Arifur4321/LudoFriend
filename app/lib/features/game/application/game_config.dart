@@ -14,6 +14,9 @@ class GameConfig {
     this.seed,
     this.autoMoveSingle = true,
     this.matchId,
+    this.boardThemeKey = 'classic',
+    this.stake = 0,
+    this.teamMode = false,
   });
 
   final GameMode mode;
@@ -27,6 +30,15 @@ class GameConfig {
   /// Backend match id for online games.
   final String? matchId;
 
+  /// Which board tier's visual theme to render (see [BoardTheme]).
+  final String boardThemeKey;
+
+  /// Per-seat coin stake (0 for casual/practice). Enforced server-side.
+  final int stake;
+
+  /// 2v2 team play (4-player boards only).
+  final bool teamMode;
+
   bool get isOnline => mode == GameMode.online;
 
   /// Convenience builder for a quick local game.
@@ -36,6 +48,8 @@ class GameConfig {
     List<String>? names,
     RuleConfig rules = const RuleConfig(),
     int? seed,
+    String boardThemeKey = 'classic',
+    bool teamMode = false,
   }) {
     final total = humans + bots;
     assert(total == 2 || total == 4, 'Ludo needs 2 or 4 seats');
@@ -59,6 +73,8 @@ class GameConfig {
       players: players,
       rules: rules,
       seed: seed,
+      boardThemeKey: boardThemeKey,
+      teamMode: teamMode,
     );
   }
 }

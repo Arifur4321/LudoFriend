@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../features/auth/presentation/login_screen.dart';
 import '../../features/auth/presentation/register_screen.dart';
+import '../../features/boards/presentation/board_select_screen.dart';
 import '../../features/common/presentation/no_internet_screen.dart';
 import '../../features/game/presentation/game_screen.dart';
 import '../../features/help/presentation/help_rules_screen.dart';
@@ -17,7 +18,10 @@ import '../../features/room/presentation/create_room_screen.dart';
 import '../../features/room/presentation/join_room_screen.dart';
 import '../../features/room/presentation/room_lobby_screen.dart';
 import '../../features/settings/presentation/settings_screen.dart';
+import '../../features/spin/presentation/spin_screen.dart';
 import '../../features/splash/presentation/splash_screen.dart';
+import '../../features/store/presentation/store_screen.dart';
+import '../../features/wallet/presentation/wallet_screen.dart';
 import 'app_routes.dart';
 
 /// Builds a page with a smooth fade transition.
@@ -66,6 +70,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       route(AppRoutes.settings, const SettingsScreen()),
       route(AppRoutes.help, const HelpRulesScreen()),
       route(AppRoutes.noInternet, const NoInternetScreen()),
+      // Economy
+      route(AppRoutes.wallet, const WalletScreen()),
+      route(AppRoutes.spin, const SpinScreen()),
+      route(AppRoutes.boards, const BoardSelectScreen()),
+      route(AppRoutes.store, const StoreScreen()),
     ],
     errorBuilder: (context, state) =>
         ErrorScreen(message: state.error?.toString()),

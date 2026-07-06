@@ -17,4 +17,10 @@ abstract class AppRoutes {
   static const String settings = '/settings';
   static const String help = '/help';
   static const String noInternet = '/no-internet';
+
+  // Economy
+  static const String wallet = '/wallet';
+  static const String spin = '/spin';
+  static const String boards = '/boards';
+  static const String store = '/store';
 }

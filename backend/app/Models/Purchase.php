@@ -16,6 +16,8 @@ class Purchase extends Model
         'platform',
         'receipt',
         'status',
+        'coins_awarded',
+        'verified_at',
         'meta',
     ];
 
@@ -24,6 +26,8 @@ class Purchase extends Model
     protected function casts(): array
     {
         return [
+            'coins_awarded' => 'integer',
+            'verified_at' => 'datetime',
             'meta' => 'array',
         ];
     }

@@ -12,6 +12,8 @@ use App\Models\MatchEvent;
 use App\Models\MatchState;
 use App\Models\PlayerProfile;
 use App\Models\PlayerStat;
+use App\Models\WalletTransaction;
+use App\Services\Economy\WalletService;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
@@ -44,8 +46,10 @@ use RuntimeException;
  */
 class GameEngineService
 {
-    public function __construct(private readonly LudoRules $rules)
-    {
+    public function __construct(
+        private readonly LudoRules $rules,
+        private readonly WalletService $wallet,
+    ) {
     }
 
     /* =====================================================================
@@ -371,24 +375,32 @@ class GameEngineService
 
         $winnerPlayer = $match->players()->where('color', $winnerColor)->first();
 
+        // In team mode the whole winning team places 1st; otherwise just the
+        // finisher does.
+        $winnerTeam = $match->team_mode ? $winnerPlayer?->team : null;
+        $winningColors = $match->team_mode && $winnerTeam !== null
+            ? $match->players()->where('team', $winnerTeam)->pluck('color')->all()
+            : [$winnerColor];
+
         $match->forceFill([
             'status' => 'finished',
             'winner_user_id' => $winnerPlayer?->user_id,
+            'ended_reason' => 'completed',
             'ended_at' => now(),
         ])->save();
 
-        // Placement: winner = 1, then rank the rest by finished tokens desc.
+        // Placement: winners = 1, then rank the rest by finished tokens desc.
         $ranking = collect($state['turn_order'])
-            ->reject(fn ($c) => $c === $winnerColor)
+            ->reject(fn ($c) => in_array($c, $winningColors, true))
             ->sortByDesc(fn ($c) => $this->rules->finishedCount($state['tokens'][$c]))
             ->values();
 
-        $match->players()->where('color', $winnerColor)->update(['placement' => 1]);
+        $match->players()->whereIn('color', $winningColors)->update(['placement' => 1]);
         foreach ($ranking as $i => $color) {
             $match->players()->where('color', $color)->update(['placement' => $i + 2]);
         }
 
-        $this->recordResults($match, $winnerPlayer?->user_id);
+        $this->recordResults($match, $winningColors);
 
         broadcast(new GameEnded($match->id, $winnerColor, $winnerPlayer?->user_id));
 
@@ -397,18 +409,41 @@ class GameEngineService
     }
 
     /**
-     * Update profile counters / coins and all-time leaderboard stats for the
-     * human participants of a finished match.
+     * Pay out the pot and update profile counters / all-time stats for the human
+     * participants of a finished match.
+     *
+     * Pure winner-takes-all: the escrowed pot goes to the winner, or is split
+     * evenly across the winning team (odd remainder to the finisher). Losers
+     * already paid their stake at start, so nothing more is debited. All coin
+     * movement flows through WalletService so the ledger stays authoritative.
+     * For legacy/casual (unstaked) matches, a flat config reward is credited.
+     *
+     * @param  string[]  $winningColors  one color, or a whole team's colors
      */
-    private function recordResults(Matchup $match, ?int $winnerUserId): void
+    private function recordResults(Matchup $match, array $winningColors): void
     {
-        $reward = (int) config('ludo.win_coins_reward');
+        $pot = (int) $match->pot;
+        $rakeBps = (int) config('economy.house_rake_bps', 0);
+        $payoutPool = $pot > 0 ? intdiv($pot * (10000 - $rakeBps), 10000) : 0;
+
+        $winners = $match->players()
+            ->whereIn('color', $winningColors)
+            ->whereNotNull('user_id')
+            ->where('is_bot', false)
+            ->orderBy('placement')
+            ->orderBy('seat')
+            ->get();
+
+        // Split the pool across human winners (even split, remainder to the first).
+        $shares = $this->splitEvenly($payoutPool, $winners->count());
 
         foreach ($match->players()->whereNotNull('user_id')->where('is_bot', false)->get() as $mp) {
-            $isWinner = $winnerUserId !== null && $mp->user_id === $winnerUserId;
+            $isWinner = in_array($mp->color, $winningColors, true);
 
             $profile = PlayerProfile::firstOrCreate(['user_id' => $mp->user_id]);
-            $isWinner ? $profile->recordWin($reward) : $profile->recordLoss();
+            // Coins are handled by the wallet below; recordWin(0) only advances
+            // the win/streak counters.
+            $isWinner ? $profile->recordWin(0) : $profile->recordLoss();
 
             $stat = PlayerStat::firstOrCreate(
                 ['user_id' => $mp->user_id, 'period' => 'all_time'],
@@ -418,9 +453,90 @@ class GameEngineService
             if ($isWinner) {
                 $stat->increment('wins');
             }
-            // Simple rating nudge; a full Elo pass can run in RecalculateLeaderboard.
             $stat->increment('rating', $isWinner ? config('ludo.rating_k_factor') : 0);
         }
+
+        if ($payoutPool > 0) {
+            foreach ($winners as $i => $mp) {
+                $share = $shares[$i] ?? 0;
+                if ($share <= 0) {
+                    continue;
+                }
+                $this->wallet->credit($mp->user_id, $share, WalletTransaction::TYPE_PRIZE, [
+                    'reference_type' => 'match',
+                    'reference_id' => $match->id,
+                    'description' => 'Match prize',
+                    'meta' => ['board_tier' => $match->board_tier, 'pot' => $pot],
+                ]);
+                $mp->forceFill(['payout' => $share])->save();
+            }
+        } elseif ((int) $match->stake === 0) {
+            // Unstaked/casual match only: flat reward from config (kept for
+            // offline parity and any legacy free rooms). A staked match with an
+            // unexpected empty pot pays nothing rather than minting free coins.
+            $reward = (int) config('ludo.win_coins_reward');
+            if ($reward > 0) {
+                foreach ($winners as $mp) {
+                    $this->wallet->credit($mp->user_id, $reward, WalletTransaction::TYPE_PRIZE, [
+                        'reference_type' => 'match',
+                        'reference_id' => $match->id,
+                        'description' => 'Match reward',
+                    ]);
+                    $mp->forceFill(['payout' => $reward])->save();
+                }
+            }
+        }
+    }
+
+    /**
+     * Split `$total` into `$parts` whole shares; the remainder goes to the first
+     * share so the sum is exactly `$total` (no coins created or lost).
+     *
+     * @return int[]
+     */
+    private function splitEvenly(int $total, int $parts): array
+    {
+        if ($parts <= 0) {
+            return [];
+        }
+        $base = intdiv($total, $parts);
+        $shares = array_fill(0, $parts, $base);
+        $shares[0] += $total - ($base * $parts);
+
+        return $shares;
+    }
+
+    /**
+     * Abort an active match and refund every escrowed stake. Used when a match
+     * is abandoned (all players gone / stale) so coins are never stranded.
+     */
+    public function abortMatch(Matchup $match, string $reason = 'abandoned'): void
+    {
+        DB::transaction(function () use ($match, $reason) {
+            $fresh = Matchup::whereKey($match->id)->lockForUpdate()->first();
+            if (! $fresh || $fresh->status !== 'active') {
+                return; // already finished/aborted
+            }
+
+            foreach ($fresh->players()->where('stake_paid', '>', 0)->whereNotNull('user_id')->where('is_bot', false)->get() as $mp) {
+                $this->wallet->credit($mp->user_id, (int) $mp->stake_paid, WalletTransaction::TYPE_REFUND, [
+                    'reference_type' => 'match',
+                    'reference_id' => $fresh->id,
+                    'description' => 'Match aborted — stake refunded',
+                ]);
+            }
+
+            $fresh->forceFill([
+                'status' => 'abandoned',
+                'ended_reason' => $reason,
+                'pot' => 0,
+                'ended_at' => now(),
+            ])->save();
+
+            if ($fresh->room_id) {
+                $fresh->room()->update(['status' => 'cancelled']);
+            }
+        });
     }
 
     /* =====================================================================

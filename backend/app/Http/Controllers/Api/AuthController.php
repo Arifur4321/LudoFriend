@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\FacebookLoginRequest;
+use App\Http\Requests\GoogleLoginRequest;
 use App\Http\Requests\GuestRequest;
 use App\Http\Requests\LoginRequest;
 use App\Http\Requests\RegisterRequest;
@@ -12,7 +13,9 @@ use App\Models\GuestSession;
 use App\Models\PlayerProfile;
 use App\Models\SocialAccount;
 use App\Models\User;
+use App\Services\Economy\WalletService;
 use App\Services\FacebookService;
+use App\Services\GoogleService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -22,8 +25,11 @@ use Illuminate\Validation\ValidationException;
 
 class AuthController extends Controller
 {
-    public function __construct(private readonly FacebookService $facebook)
-    {
+    public function __construct(
+        private readonly FacebookService $facebook,
+        private readonly GoogleService $google,
+        private readonly WalletService $wallet,
+    ) {
     }
 
     /**
@@ -157,6 +163,52 @@ class AuthController extends Controller
     }
 
     /**
+     * Google login: verify the ID token, fetch the profile, link/create a user.
+     */
+    public function google(GoogleLoginRequest $request): JsonResponse
+    {
+        $profile = $this->google->verifyIdToken($request->string('id_token'));
+
+        if (empty($profile['id'])) {
+            throw ValidationException::withMessages([
+                'id_token' => ['Unable to resolve Google profile.'],
+            ]);
+        }
+
+        $user = DB::transaction(function () use ($profile) {
+            $social = SocialAccount::where('provider', 'google')
+                ->where('provider_user_id', $profile['id'])
+                ->first();
+
+            if ($social) {
+                $user = $social->user;
+            } else {
+                // Link to an existing email account if one exists, else create.
+                $user = ($profile['email'] ? User::where('email', $profile['email'])->first() : null)
+                    ?? User::create([
+                        'name' => $profile['name'] ?? 'Player',
+                        'email' => $profile['email'],
+                        'avatar' => $profile['avatar'],
+                        'is_guest' => false,
+                    ]);
+
+                SocialAccount::create([
+                    'user_id' => $user->id,
+                    'provider' => 'google',
+                    'provider_user_id' => $profile['id'],
+                    'avatar_url' => $profile['avatar'],
+                ]);
+            }
+
+            $this->ensureProfile($user, $profile['name'] ?? null, $profile['avatar'] ?? null);
+
+            return $user;
+        });
+
+        return $this->tokenResponse($user, 'google');
+    }
+
+    /**
      * Revoke the current access token.
      */
     public function logout(Request $request): JsonResponse
@@ -180,14 +232,20 @@ class AuthController extends Controller
 
     private function ensureProfile(User $user, ?string $displayName = null, ?string $avatar = null): void
     {
-        PlayerProfile::firstOrCreate(
+        $profile = PlayerProfile::firstOrCreate(
             ['user_id' => $user->id],
             [
                 'display_name' => $displayName ?? $user->name,
                 'avatar' => $avatar ?? $user->avatar,
-                'coins' => config('ludo.starting_coins'),
+                'coins' => 0, // seeded below through the ledger
             ]
         );
+
+        // Seed the starting balance once, as an auditable ledger entry, only for
+        // freshly created profiles (idempotent guard inside the service too).
+        if ($profile->wasRecentlyCreated) {
+            $this->wallet->grantSignupBonus($user);
+        }
     }
 
     private function tokenResponse(User $user, string $deviceName, int $status = 200): JsonResponse

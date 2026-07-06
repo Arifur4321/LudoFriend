@@ -42,4 +42,13 @@ abstract class ApiEndpoints {
 
   // Leaderboard
   static const String leaderboard = '/leaderboard';
+
+  // Economy — wallet, staked boards, daily spin, coin store.
+  static const String wallet = '/wallet';
+  static const String walletTransactions = '/wallet/transactions';
+  static const String boards = '/boards';
+  static const String spinStatus = '/spin/status';
+  static const String spin = '/spin';
+  static const String storePacks = '/store/packs';
+  static const String storePurchase = '/store/purchase';
 }

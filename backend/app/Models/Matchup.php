@@ -26,6 +26,11 @@ class Matchup extends Model
         'mode',
         'status',
         'winner_user_id',
+        'board_tier',
+        'stake',
+        'pot',
+        'team_mode',
+        'ended_reason',
         'rule_config',
         'seed',
         'started_at',
@@ -35,6 +40,9 @@ class Matchup extends Model
     protected function casts(): array
     {
         return [
+            'stake' => 'integer',
+            'pot' => 'integer',
+            'team_mode' => 'boolean',
             'rule_config' => 'array',
             'seed' => 'integer',
             'started_at' => 'datetime',

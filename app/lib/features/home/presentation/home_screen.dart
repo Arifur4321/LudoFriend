@@ -12,6 +12,8 @@ import '../../../shared/widgets/app_background.dart';
 import '../../../shared/widgets/bouncing_button.dart';
 import '../../../shared/widgets/primary_button.dart';
 import '../../auth/application/auth_controller.dart';
+import '../../spin/presentation/widgets/free_spin_badge.dart';
+import '../../wallet/presentation/widgets/coin_balance_chip.dart';
 
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
@@ -23,12 +25,11 @@ class HomeScreen extends ConsumerWidget {
     return Scaffold(
       body: AppBackground(
         child: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24),
-            child: Column(
-              children: [
-                const SizedBox(height: 8),
-                Row(
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(24, 8, 24, 0),
+                child: Row(
                   children: [
                     _AccountChip(
                       name: auth?.name ?? 'Guest',
@@ -37,6 +38,8 @@ class HomeScreen extends ConsumerWidget {
                           auth == null ? AppRoutes.login : AppRoutes.profile),
                     ),
                     const Spacer(),
+                    const CoinBalanceChip(compact: true),
+                    const SizedBox(width: 8),
                     IconButton(
                       onPressed: () => context.push(AppRoutes.settings),
                       icon: SvgPicture.asset(AppAssets.icon('sound_on'),
@@ -44,61 +47,78 @@ class HomeScreen extends ConsumerWidget {
                     ),
                   ],
                 ),
-                const Spacer(),
-                SvgPicture.asset(AppAssets.logo, width: 280),
-                const SizedBox(height: 8),
-                Text('Roll the dice. Bring them home.',
-                    style: AppTextStyles.body.copyWith(color: Colors.white70)),
-                const Spacer(),
-                PrimaryButton(
-                  label: 'Play',
-                  icon: Icons.play_arrow_rounded,
-                  gradient: AppGradients.accentButton,
-                  onPressed: () => context.push(AppRoutes.play),
+              ),
+              // Scrollable menu so the growing set of entries never overflows.
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(24, 14, 24, 24),
+                  child: Column(
+                    children: [
+                      SvgPicture.asset(AppAssets.logo, width: 210),
+                      const SizedBox(height: 8),
+                      Text('Roll the dice. Bring them home.',
+                          style:
+                              AppTextStyles.body.copyWith(color: Colors.white70)),
+                      const SizedBox(height: 22),
+                      PrimaryButton(
+                        label: 'Play',
+                        icon: Icons.play_arrow_rounded,
+                        gradient: AppGradients.accentButton,
+                        onPressed: () => context.push(AppRoutes.play),
+                      ),
+                      const SizedBox(height: 12),
+                      const FreeSpinBadge(),
+                      const SizedBox(height: 12),
+                      PrimaryButton(
+                        label: 'Coin Boards',
+                        icon: Icons.grid_view_rounded,
+                        onPressed: () => context.push(AppRoutes.boards),
+                      ),
+                      const SizedBox(height: 14),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _MenuTile(
+                              icon: 'friends',
+                              label: 'Online',
+                              onTap: () => context.push(AppRoutes.matchmaking),
+                            ),
+                          ),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: _MenuTile(
+                              icon: 'room',
+                              label: 'Private Room',
+                              onTap: () => context.push(AppRoutes.createRoom),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 14),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _MenuTile(
+                              icon: 'trophy',
+                              label: 'Leaderboard',
+                              onTap: () => context.push(AppRoutes.leaderboard),
+                            ),
+                          ),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: _MenuTile(
+                              icon: 'dice',
+                              label: 'How to Play',
+                              onTap: () => context.push(AppRoutes.help),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
-                const SizedBox(height: 14),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _MenuTile(
-                        icon: 'friends',
-                        label: 'Online',
-                        onTap: () => context.push(AppRoutes.matchmaking),
-                      ),
-                    ),
-                    const SizedBox(width: 14),
-                    Expanded(
-                      child: _MenuTile(
-                        icon: 'room',
-                        label: 'Private Room',
-                        onTap: () => context.push(AppRoutes.createRoom),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 14),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _MenuTile(
-                        icon: 'trophy',
-                        label: 'Leaderboard',
-                        onTap: () => context.push(AppRoutes.leaderboard),
-                      ),
-                    ),
-                    const SizedBox(width: 14),
-                    Expanded(
-                      child: _MenuTile(
-                        icon: 'dice',
-                        label: 'How to Play',
-                        onTap: () => context.push(AppRoutes.help),
-                      ),
-                    ),
-                  ],
-                ),
-                const Spacer(),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),
