@@ -43,7 +43,7 @@ class FacebookAuthService {
   Future<FacebookProfile?> login() async {
     _ensureEnabled();
     final result = await FacebookAuth.instance.login(
-      permissions: const ['public_profile', 'email', 'user_friends'],
+      permissions: const ['public_profile'],
     );
     if (result.status == LoginStatus.cancelled) return null;
     if (result.status != LoginStatus.success || result.accessToken == null) {
@@ -53,7 +53,7 @@ class FacebookAuthService {
     }
 
     final data = await FacebookAuth.instance.getUserData(
-      fields: 'id,name,email,picture.width(200)',
+      fields: 'id,name,picture.width(200)',
     );
     return FacebookProfile(
       id: '${data['id']}',
