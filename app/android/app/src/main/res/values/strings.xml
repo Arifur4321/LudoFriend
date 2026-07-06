@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Ludo Friends</string>
-    <string name="facebook_app_id">000000000000000</string>
-    <string name="facebook_client_token">00000000000000000000000000000000</string>
-    <string name="fb_login_protocol_scheme">fb000000000000000</string>
+    <string name="facebook_app_id">2582636912564874</string>
+    <string name="facebook_client_token">REPLACE_WITH_FACEBOOK_CLIENT_TOKEN</string>
+    <string name="fb_login_protocol_scheme">fb2582636912564874</string>
 </resources>
