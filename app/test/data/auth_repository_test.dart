@@ -20,6 +20,8 @@ void main() {
     storage = _MockStorage();
     repo = AuthRepository(dio, storage);
     when(() => storage.saveToken(any())).thenAnswer((_) async {});
+    when(() => storage.guestId).thenAnswer((_) async => 'device-test');
+    when(() => storage.saveGuestId(any())).thenAnswer((_) async {});
   });
 
   test('guest falls back to a local guest when the backend is unreachable',
@@ -34,9 +36,12 @@ void main() {
     expect(user.isGuest, isTrue);
     expect(user.name, 'Tester');
     expect(user.token, isNull); // purely local, no token
+    verify(() => storage.guestId).called(1);
   });
 
-  test('successful guest login persists the token', () async {
+  test('successful guest login sends device id and persists the token',
+      () async {
+    final captured = <Map<String, dynamic>>[];
     when(() => dio.post(any(), data: any(named: 'data'))).thenAnswer(
       (_) async => Response(
         requestOptions: RequestOptions(path: ''),
@@ -52,6 +57,12 @@ void main() {
     final user = (res as Ok<AuthUser>).value;
 
     expect(user.token, 'tok123');
+    verify(() => dio.post(any(), data: captureAny(named: 'data')))
+        .captured
+        .cast<Map<String, dynamic>>()
+        .forEach(captured.add);
+    expect(captured.single['device_id'], 'device-test');
+    expect(captured.single['guest_name'], 'Tester');
     verify(() => storage.saveToken('tok123')).called(1);
   });
 

@@ -5,7 +5,7 @@
 | Economy configuration (single source of truth)
 |--------------------------------------------------------------------------
 |
-| Board tiers, the daily-spin wheel, purchasable coin packs, and social /
+| Board tiers, the hourly free-spin wheel, purchasable coin packs, and social /
 | store feature flags. Server-authoritative: the client renders these but the
 | server always re-reads them when validating stakes, spins, and purchases.
 |

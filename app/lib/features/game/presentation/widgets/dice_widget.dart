@@ -18,7 +18,7 @@ class DiceWidget extends ConsumerStatefulWidget {
     required this.rolling,
     required this.enabled,
     required this.onRoll,
-    this.size = 66,
+    this.size = 78,
     this.tint = AppColors.primary,
   });
 
@@ -85,7 +85,8 @@ class _DiceWidgetState extends ConsumerState<DiceWidget>
         animation: Listenable.merge([_roll, _settle]),
         builder: (context, child) {
           final rolling = widget.rolling;
-          final face = rolling ? (_rng.nextInt(6) + 1) : (widget.face ?? _shown);
+          final face =
+              rolling ? (_rng.nextInt(6) + 1) : (widget.face ?? _shown);
 
           double angle = 0, bounce = 0, sx = 1, sy = 1;
           if (rolling) {
@@ -129,10 +130,9 @@ class _DiceWidgetState extends ConsumerState<DiceWidget>
   }
 }
 
-/// Paints an isometric cube die: a top diamond + left and right parallelogram
-/// faces, each shaded and carrying real pips. The top face shows the rolled
-/// value; the side faces show two valid adjacent faces so it reads as a real
-/// die from a corner.
+/// Paints a crisp, readable die face with a small 3D bevel. The front face
+/// carries the rolled value, keeping the number understandable while the shadow
+/// and side facets make it feel physical.
 class _CubeDiePainter extends CustomPainter {
   _CubeDiePainter({
     required this.face,
@@ -151,152 +151,150 @@ class _CubeDiePainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final s = size.width;
-    final u = s * 0.32; // top diamond half-width
-    final v = u * 0.5; // top diamond half-height (2:1 iso)
-    final h = s * 0.34; // side face height
-    final cx = s * 0.5;
-    // Vertically centre the cube (it spans v above and v+h below its centre).
-    final cy = s * 0.5 - h / 2;
+    final side = s * 0.1;
+    final inset = s * 0.08;
+    final radius = s * 0.18;
+    final front = RRect.fromRectAndRadius(
+      Rect.fromLTWH(inset, inset, s - inset * 2 - side, s - inset * 2 - side),
+      Radius.circular(radius),
+    );
+    final sideRect = RRect.fromRectAndRadius(
+      Rect.fromLTWH(front.right - radius * 0.35, front.top + side,
+          side + radius * 0.35, front.height),
+      Radius.circular(radius * 0.72),
+    );
+    final bottomRect = RRect.fromRectAndRadius(
+      Rect.fromLTWH(front.left + side, front.bottom - radius * 0.35,
+          front.width, side + radius * 0.35),
+      Radius.circular(radius * 0.72),
+    );
+    final frontRect = front.outerRect;
+    final pipColor = Color.lerp(pip, Colors.black, 0.08) ?? pip;
+    final cx = frontRect.center.dx;
 
-    // Cube corners.
-    final t = Offset(cx, cy - v); // top
-    final l = Offset(cx - u, cy); // left
-    final r = Offset(cx + u, cy); // right
-    final b = Offset(cx, cy + v); // front-middle
-    final l2 = Offset(cx - u, cy + h); // left-down
-    final r2 = Offset(cx + u, cy + h); // right-down
-    final b2 = Offset(cx, cy + v + h); // front-bottom
-
-    // Contact shadow.
     canvas.drawOval(
-      Rect.fromCenter(center: Offset(cx, cy + v + h * 0.95), width: u * 2.0, height: v * 1.1),
+      Rect.fromCenter(
+        center: Offset(s * 0.52, s * 0.88),
+        width: s * 0.78,
+        height: s * 0.18,
+      ),
       Paint()
         ..color = shadow.withValues(alpha: 0.28)
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6),
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 7),
     );
 
-    // Face colours (top brightest, right darkest).
-    final topA = _lerp(top, Colors.white, 0.06);
-    final topB = _lerp(top, bottom, 0.35);
-    final leftC = _lerp(top, bottom, 0.55);
-    final rightC = _lerp(bottom, Colors.black, 0.10);
+    final sidePaint = Paint()
+      ..shader = LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [
+          _lerp(bottom, Colors.white, 0.06),
+          _lerp(bottom, Colors.black, 0.2),
+        ],
+      ).createShader(sideRect.outerRect);
+    final bottomPaint = Paint()
+      ..shader = LinearGradient(
+        begin: Alignment.centerLeft,
+        end: Alignment.centerRight,
+        colors: [
+          _lerp(bottom, Colors.white, 0.02),
+          _lerp(bottom, Colors.black, 0.22),
+        ],
+      ).createShader(bottomRect.outerRect);
 
-    // Left face.
-    _fillQuad(canvas, [l, b, b2, l2], leftC, _lerp(leftC, Colors.black, 0.08));
-    // Right face.
-    _fillQuad(canvas, [b, r, r2, b2], rightC, _lerp(rightC, Colors.black, 0.06));
-    // Top face.
-    _fillQuad(canvas, [l, t, r, b], topA, topB);
+    canvas.drawRRect(sideRect, sidePaint);
+    canvas.drawRRect(bottomRect, bottomPaint);
 
-    // Edge outlines for crisp definition.
-    final edge = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = s * 0.012
-      ..strokeJoin = StrokeJoin.round
-      ..color = Colors.black.withValues(alpha: 0.16);
-    // Silhouette.
-    canvas.drawPath(
-      Path()
-        ..moveTo(t.dx, t.dy)
-        ..lineTo(r.dx, r.dy)
-        ..lineTo(r2.dx, r2.dy)
-        ..lineTo(b2.dx, b2.dy)
-        ..lineTo(l2.dx, l2.dy)
-        ..lineTo(l.dx, l.dy)
-        ..close(),
-      edge,
+    canvas.drawRRect(
+      front,
+      Paint()
+        ..shader = LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            _lerp(top, Colors.white, 0.45),
+            top,
+            _lerp(bottom, Colors.black, 0.04),
+          ],
+          stops: const [0, 0.48, 1],
+        ).createShader(frontRect),
     );
-    // Inner edges (the three that meet at the front-top corner b).
-    canvas.drawLine(l, b, edge);
-    canvas.drawLine(r, b, edge);
-    canvas.drawLine(b, b2, edge);
 
-    // Top-face gloss.
+    canvas.drawRRect(
+      front.deflate(s * 0.025),
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = s * 0.018
+        ..color = Colors.white.withValues(alpha: 0.5),
+    );
+
+    canvas.drawRRect(
+      front,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = s * 0.032
+        ..strokeJoin = StrokeJoin.round
+        ..color = _lerp(shadow, Colors.black, 0.18).withValues(alpha: 0.55),
+    );
+
+    canvas.drawLine(
+      Offset(front.right, front.top + radius * 0.48),
+      Offset(front.right + side * 0.62, front.top + side + radius * 0.35),
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = s * 0.024
+        ..strokeCap = StrokeCap.round
+        ..color = Colors.black.withValues(alpha: 0.13),
+    );
+    canvas.drawLine(
+      Offset(front.left + radius * 0.48, front.bottom),
+      Offset(front.left + side + radius * 0.35, front.bottom + side * 0.62),
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = s * 0.024
+        ..strokeCap = StrokeCap.round
+        ..color = Colors.black.withValues(alpha: 0.12),
+    );
+
     canvas.save();
-    canvas.clipPath(Path()
-      ..moveTo(l.dx, l.dy)
-      ..lineTo(t.dx, t.dy)
-      ..lineTo(r.dx, r.dy)
-      ..lineTo(b.dx, b.dy)
-      ..close());
-    canvas.drawCircle(Offset(cx - u * 0.2, cy - v * 0.4), u * 0.7,
-        Paint()..color = Colors.white.withValues(alpha: 0.12));
+    canvas.clipRRect(front);
+    canvas.drawCircle(
+      Offset(cx - s * 0.12, front.top + s * 0.13),
+      s * 0.32,
+      Paint()..color = Colors.white.withValues(alpha: 0.22),
+    );
     canvas.restore();
 
-    // Pips: top = rolled value, sides = two valid adjacent faces.
-    final sides = _sideFaces(face);
-    _pipsOnQuad(canvas, [l, t, r, b], face, pip, u * 0.155);
-    _pipsOnQuad(canvas, [l, b, b2, l2], sides[0], pip, u * 0.135);
-    _pipsOnQuad(canvas, [b, r, r2, b2], sides[1], pip, u * 0.135);
+    final radiusPip = s * 0.068;
+    for (final p in _pipCenters(face)) {
+      final c = Offset(
+        frontRect.left + frontRect.width * p.dx,
+        frontRect.top + frontRect.height * p.dy,
+      );
+      canvas.drawCircle(
+        c.translate(s * 0.012, s * 0.014),
+        radiusPip * 1.05,
+        Paint()..color = Colors.black.withValues(alpha: 0.2),
+      );
+      canvas.drawCircle(
+        c,
+        radiusPip,
+        Paint()..color = pipColor,
+      );
+      canvas.drawCircle(
+        c.translate(-radiusPip * 0.26, -radiusPip * 0.28),
+        radiusPip * 0.34,
+        Paint()..color = Colors.white.withValues(alpha: 0.34),
+      );
+    }
   }
 
   // ---- helpers -------------------------------------------------------------
 
   Color _lerp(Color a, Color b, double t) => Color.lerp(a, b, t) ?? a;
 
-  Rect _bounds(List<Offset> q) {
-    var minX = q.first.dx, maxX = q.first.dx, minY = q.first.dy, maxY = q.first.dy;
-    for (final p in q) {
-      minX = math.min(minX, p.dx);
-      maxX = math.max(maxX, p.dx);
-      minY = math.min(minY, p.dy);
-      maxY = math.max(maxY, p.dy);
-    }
-    return Rect.fromLTRB(minX, minY, maxX, maxY);
-  }
-
-  void _fillQuad(Canvas canvas, List<Offset> q, Color topColor, Color bottomColor) {
-    final paint = Paint()
-      ..shader = LinearGradient(
-        begin: Alignment.topCenter,
-        end: Alignment.bottomCenter,
-        colors: [topColor, bottomColor],
-      ).createShader(_bounds(q));
-    final path = Path()
-      ..moveTo(q[0].dx, q[0].dy)
-      ..lineTo(q[1].dx, q[1].dy)
-      ..lineTo(q[2].dx, q[2].dy)
-      ..lineTo(q[3].dx, q[3].dy)
-      ..close();
-    canvas.drawPath(path, paint);
-  }
-
-  /// Bilinear map of a unit-square point onto a quad (corners in P00,P10,P11,P01
-  /// order), then draw the face's pips there.
-  void _pipsOnQuad(Canvas canvas, List<Offset> q, int value, Color color, double radius) {
-    Offset mapPoint(double pu, double pv) {
-      final topEdge = Offset.lerp(q[0], q[1], pu)!;
-      final botEdge = Offset.lerp(q[3], q[2], pu)!;
-      return Offset.lerp(topEdge, botEdge, pv)!;
-    }
-
-    for (final p in _pips(value)) {
-      final c = mapPoint(p.dx, p.dy);
-      canvas.drawCircle(c.translate(0, radius * 0.16), radius,
-          Paint()..color = Colors.black.withValues(alpha: 0.16));
-      canvas.drawCircle(c, radius, Paint()..color = color);
-      canvas.drawCircle(c.translate(-radius * 0.28, -radius * 0.3), radius * 0.34,
-          Paint()..color = Colors.white.withValues(alpha: 0.4));
-    }
-  }
-
-  /// Two visible side faces for a given top value — both adjacent to the top and
-  /// to each other, so the corner is a valid die corner.
-  List<int> _sideFaces(int topValue) {
-    final opp = 7 - topValue;
-    final avail = [1, 2, 3, 4, 5, 6]
-        .where((x) => x != topValue && x != opp)
-        .toList();
-    final left = avail.first;
-    final right = avail.firstWhere(
-      (x) => x != left && x != (7 - left),
-      orElse: () => avail[1],
-    );
-    return [left, right];
-  }
-
   /// Unit-square pip centres for a die face.
-  List<Offset> _pips(int f) {
+  List<Offset> _pipCenters(int f) {
     const a = 0.27, b = 0.5, c = 0.73;
     switch (f) {
       case 1:
@@ -309,12 +307,20 @@ class _CubeDiePainter extends CustomPainter {
         return const [Offset(a, a), Offset(c, a), Offset(a, c), Offset(c, c)];
       case 5:
         return const [
-          Offset(a, a), Offset(c, a), Offset(b, b), Offset(a, c), Offset(c, c)
+          Offset(a, a),
+          Offset(c, a),
+          Offset(b, b),
+          Offset(a, c),
+          Offset(c, c)
         ];
       case 6:
         return const [
-          Offset(a, a), Offset(c, a), Offset(a, b),
-          Offset(c, b), Offset(a, c), Offset(c, c)
+          Offset(a, a),
+          Offset(c, a),
+          Offset(a, b),
+          Offset(c, b),
+          Offset(a, c),
+          Offset(c, c)
         ];
       default:
         return const [Offset(b, b)];

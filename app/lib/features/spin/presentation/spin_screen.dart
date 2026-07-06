@@ -66,8 +66,8 @@ class _SpinScreenState extends ConsumerState<SpinScreen>
         if (delta < 0) delta += 2 * math.pi;
         final target = _rotation + 2 * math.pi * 5 + delta;
 
-        _anim = Tween<double>(begin: _rotation, end: target)
-            .animate(CurvedAnimation(parent: _spin, curve: Curves.easeOutCubic));
+        _anim = Tween<double>(begin: _rotation, end: target).animate(
+            CurvedAnimation(parent: _spin, curve: Curves.easeOutCubic));
         _spin.forward(from: 0).whenComplete(() {
           _rotation = target;
           if (mounted) {
@@ -90,7 +90,8 @@ class _SpinScreenState extends ConsumerState<SpinScreen>
       context: context,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        title: Text('You won!', textAlign: TextAlign.center, style: AppTextStyles.heading),
+        title: Text('You won!',
+            textAlign: TextAlign.center, style: AppTextStyles.heading),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -122,26 +123,31 @@ class _SpinScreenState extends ConsumerState<SpinScreen>
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Daily Spin'),
+        title: const Text('Free Spin'),
         actions: const [
-          Padding(padding: EdgeInsets.only(right: 12), child: Center(child: CoinBalanceChip(compact: true))),
+          Padding(
+              padding: EdgeInsets.only(right: 12),
+              child: Center(child: CoinBalanceChip(compact: true))),
         ],
       ),
       extendBodyBehindAppBar: true,
       body: AppBackground(
         child: SafeArea(
           child: async.when(
-            loading: () => const Center(child: CircularProgressIndicator(color: Colors.white)),
-            error: (e, _) => _Message(text: 'Could not load the spin wheel.'),
+            loading: () => const Center(
+                child: CircularProgressIndicator(color: Colors.white)),
+            error: (e, _) =>
+                const _Message(text: 'Could not load the spin wheel.'),
             data: (status) {
               if (status == null || !status.enabled) {
-                return _Message(text: 'Daily spin is currently unavailable.');
+                return const _Message(
+                    text: 'Free spin is currently unavailable.');
               }
               return Padding(
                 padding: const EdgeInsets.fromLTRB(24, 90, 24, 24),
                 child: Column(
                   children: [
-                    Text('Spin once a day for free coins!',
+                    Text('Spin every hour for bonus coins!',
                         style: AppTextStyles.body.copyWith(color: Colors.white),
                         textAlign: TextAlign.center),
                     const SizedBox(height: 20),

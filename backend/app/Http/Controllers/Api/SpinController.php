@@ -14,7 +14,7 @@ class SpinController extends Controller
     {
     }
 
-    /** Whether the free spin is available + the wheel layout. */
+    /** Whether the hourly free spin is available + the wheel layout. */
     public function status(Request $request): JsonResponse
     {
         return response()->json([
@@ -24,7 +24,7 @@ class SpinController extends Controller
         ]);
     }
 
-    /** Claim the free spin (server picks the reward). */
+    /** Claim the hourly free spin (server picks the reward). */
     public function spin(Request $request): JsonResponse
     {
         try {

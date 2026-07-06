@@ -13,6 +13,9 @@ class RoomDraft {
     required this.turnTimer,
     required this.isPrivate,
     this.isHost = true,
+    this.boardThemeKey = 'casual',
+    this.boardName,
+    this.teamMode = false,
   });
 
   final String code;
@@ -21,6 +24,9 @@ class RoomDraft {
   final int turnTimer;
   final bool isPrivate;
   final bool isHost;
+  final String boardThemeKey;
+  final String? boardName;
+  final bool teamMode;
 
   static String generateCode() {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';

@@ -5,14 +5,16 @@ import 'package:go_router/go_router.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../../core/router/app_routes.dart';
-import '../../../services/facebook/facebook_auth_service.dart';
-import '../../../services/social/social_auth_exception.dart';
+import '../../../core/storage/local_cache.dart';
 import '../../../game_engine/models/ludo_color.dart';
 import '../../../game_engine/rules/rule_config.dart';
 import '../../../shared/theme/app_colors.dart';
 import '../../../shared/theme/app_text_styles.dart';
+import '../../../shared/theme/board_theme.dart';
 import '../../../shared/widgets/app_background.dart';
 import '../../../shared/widgets/primary_button.dart';
+import '../../../services/facebook/facebook_auth_service.dart';
+import '../../../services/social/social_auth_exception.dart';
 import '../../auth/application/auth_controller.dart';
 import '../../friends/data/friends_repository.dart';
 import '../../game/application/game_config.dart';
@@ -25,10 +27,15 @@ class RoomLobbyScreen extends ConsumerWidget {
   void _start(BuildContext context, WidgetRef ref, RoomDraft draft) {
     // Offline: fill the remaining seats with bots so the room is playable now.
     // Online (Phase 2) replaces these seats with networked players.
+    ref.read(activeBoardThemeProvider.notifier).state =
+        BoardTheme.forKey(draft.boardThemeKey);
+    ref.read(localCacheProvider).setSelectedBoardTier(draft.boardThemeKey);
     ref.read(gameConfigProvider.notifier).state = GameConfig.local(
       humans: 1,
       bots: draft.seats - 1,
       rules: RuleConfig(turnTimerSeconds: draft.turnTimer),
+      boardThemeKey: draft.boardThemeKey,
+      teamMode: draft.teamMode,
     );
     context.go(AppRoutes.game);
   }
@@ -63,6 +70,9 @@ class RoomLobbyScreen extends ConsumerWidget {
                           Text(draft.code,
                               style: AppTextStyles.display
                                   .copyWith(color: AppColors.primary)),
+                          if (draft.boardName != null)
+                            Text(draft.boardName!,
+                                style: AppTextStyles.bodyMuted),
                         ],
                       ),
                       const Spacer(),
@@ -165,7 +175,8 @@ class _InvitePanelState extends ConsumerState<_InvitePanel> {
     await SharePlus.instance.share(
       ShareParams(
         subject: 'Join my Ludo Friends room',
-        text: 'Join my Ludo Friends room with code ${widget.draft.code}.',
+        text:
+            'Join my ${widget.draft.boardName ?? 'Ludo Friends'} room with code ${widget.draft.code}.',
       ),
     );
   }

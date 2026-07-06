@@ -27,7 +27,8 @@ class WalletScreen extends ConsumerWidget {
       body: AppBackground(
         child: SafeArea(
           child: RefreshIndicator(
-            onRefresh: () => ref.read(walletControllerProvider.notifier).refresh(),
+            onRefresh: () =>
+                ref.read(walletControllerProvider.notifier).refresh(),
             child: ListView(
               padding: const EdgeInsets.fromLTRB(20, 80, 20, 24),
               children: [
@@ -37,7 +38,7 @@ class WalletScreen extends ConsumerWidget {
                   children: [
                     Expanded(
                       child: PrimaryButton(
-                        label: 'Daily Spin',
+                        label: 'Free Spin',
                         icon: Icons.casino_rounded,
                         onPressed: () => context.push(AppRoutes.spin),
                       ),
@@ -59,7 +60,8 @@ class WalletScreen extends ConsumerWidget {
                 if (async.isLoading && recent.isEmpty)
                   const Padding(
                     padding: EdgeInsets.all(24),
-                    child: Center(child: CircularProgressIndicator(color: Colors.white)),
+                    child: Center(
+                        child: CircularProgressIndicator(color: Colors.white)),
                   )
                 else if (recent.isEmpty)
                   _EmptyActivity()
@@ -140,8 +142,8 @@ class _TxTile extends StatelessWidget {
         children: [
           CircleAvatar(
             radius: 18,
-            backgroundColor:
-                (credit ? AppColors.success : AppColors.danger).withValues(alpha: 0.15),
+            backgroundColor: (credit ? AppColors.success : AppColors.danger)
+                .withValues(alpha: 0.15),
             child: Icon(credit ? Icons.arrow_downward : Icons.arrow_upward,
                 color: credit ? AppColors.success : AppColors.danger, size: 18),
           ),

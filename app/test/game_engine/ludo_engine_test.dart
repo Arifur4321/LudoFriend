@@ -7,7 +7,6 @@ import 'package:ludo_friends/game_engine/models/game_state.dart';
 import 'package:ludo_friends/game_engine/models/game_status.dart';
 import 'package:ludo_friends/game_engine/models/ludo_color.dart';
 import 'package:ludo_friends/game_engine/models/token.dart';
-import 'package:ludo_friends/game_engine/rules/rule_config.dart';
 
 GamePlayer _p(LudoColor c, {PlayerKind kind = PlayerKind.human}) =>
     GamePlayer(color: c, name: c.name, kind: kind);

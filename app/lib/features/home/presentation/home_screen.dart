@@ -57,8 +57,8 @@ class HomeScreen extends ConsumerWidget {
                       SvgPicture.asset(AppAssets.logo, width: 210),
                       const SizedBox(height: 8),
                       Text('Roll the dice. Bring them home.',
-                          style:
-                              AppTextStyles.body.copyWith(color: Colors.white70)),
+                          style: AppTextStyles.body
+                              .copyWith(color: Colors.white70)),
                       const SizedBox(height: 22),
                       PrimaryButton(
                         label: 'Play',
@@ -70,7 +70,7 @@ class HomeScreen extends ConsumerWidget {
                       const FreeSpinBadge(),
                       const SizedBox(height: 12),
                       PrimaryButton(
-                        label: 'Coin Boards',
+                        label: 'Enter Boards',
                         icon: Icons.grid_view_rounded,
                         onPressed: () => context.push(AppRoutes.boards),
                       ),

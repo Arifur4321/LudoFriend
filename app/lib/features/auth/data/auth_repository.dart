@@ -4,7 +4,6 @@ import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/di/providers.dart';
-import '../../../core/errors/failures.dart';
 import '../../../core/network/api_endpoints.dart';
 import '../../../core/network/api_result.dart';
 import '../../../core/network/dio_client.dart';
@@ -27,12 +26,28 @@ class AuthRepository {
     return '${animals[n.nextInt(animals.length)]}${1000 + n.nextInt(9000)}';
   }
 
+  Future<String> _guestDeviceId() async {
+    final existing = await _storage.guestId;
+    if (existing != null && existing.isNotEmpty) return existing;
+
+    final random = Random.secure();
+    final suffix = List.generate(
+      16,
+      (_) => random.nextInt(16).toRadixString(16),
+    ).join();
+    final id = 'guest-${DateTime.now().millisecondsSinceEpoch}-$suffix';
+    await _storage.saveGuestId(id);
+    return id;
+  }
+
   Future<Result<AuthUser>> guest({String? name}) async {
     final guestName =
         (name == null || name.trim().isEmpty) ? randomGuestName() : name.trim();
     try {
-      final res =
-          await _dio.post(ApiEndpoints.guest, data: {'name': guestName});
+      final res = await _dio.post(ApiEndpoints.guest, data: {
+        'device_id': await _guestDeviceId(),
+        'guest_name': guestName,
+      });
       final user =
           _userFromResponse(res.data, fallbackName: guestName).copyWith();
       await _persist(user);

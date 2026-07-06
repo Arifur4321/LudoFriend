@@ -38,4 +38,25 @@ class GuestSessionTest extends TestCase
     {
         $this->postJson('/api/v1/auth/guest', [])->assertStatus(422);
     }
+
+    public function test_guest_can_claim_hourly_free_spin(): void
+    {
+        $token = $this->postJson('/api/v1/auth/guest', [
+            'device_id' => 'device-spin',
+            'guest_name' => 'Spinner',
+        ])->assertOk()->json('token');
+
+        $this->withToken($token)->getJson('/api/v1/spin/status')
+            ->assertOk()
+            ->assertJsonPath('can_spin', true)
+            ->assertJsonPath('interval_minutes', 60);
+
+        $this->withToken($token)->postJson('/api/v1/spin')
+            ->assertOk()
+            ->assertJsonStructure(['reward', 'segment_index', 'balance', 'next_available_at']);
+
+        $this->withToken($token)->getJson('/api/v1/spin/status')
+            ->assertOk()
+            ->assertJsonPath('can_spin', false);
+    }
 }
