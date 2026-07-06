@@ -27,6 +27,10 @@ return Application::configure(basePath: dirname(__DIR__))
 
         // Trust proxies for correct scheme/host behind load balancers.
         $middleware->trustProxies(at: '*');
+
+        // This is an API-only backend. Unauthenticated API requests must return
+        // JSON 401 responses instead of redirecting to a non-existent web login.
+        $middleware->redirectGuestsTo(fn () => null);
     })
     ->withExceptions(function (Exceptions $exceptions) {
         // Always render JSON for the API surface.

@@ -62,4 +62,11 @@ class AuthTest extends TestCase
     {
         $this->getJson('/api/v1/me')->assertUnauthorized();
     }
+
+    public function test_api_authentication_returns_json_without_accept_header(): void
+    {
+        $this->get('/api/v1/leaderboard')
+            ->assertUnauthorized()
+            ->assertJson(['message' => 'Unauthenticated.']);
+    }
 }
