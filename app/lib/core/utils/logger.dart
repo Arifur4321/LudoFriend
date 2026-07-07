@@ -11,6 +11,11 @@ abstract class AppLogger {
     }
   }
 
+  /// Temporary auth diagnostics. Keep sensitive values out of these messages.
+  static void auth(String message) {
+    developer.log(message, name: 'LudoFriendsAuth');
+  }
+
   static void e(String message, [Object? error, StackTrace? stack]) {
     developer.log(message,
         name: 'LudoFriends', error: error, stackTrace: stack, level: 1000);

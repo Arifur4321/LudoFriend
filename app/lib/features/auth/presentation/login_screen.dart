@@ -6,6 +6,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/router/app_routes.dart';
+import '../../../core/utils/logger.dart';
 import '../../../shared/theme/app_colors.dart';
 import '../../../shared/theme/app_text_styles.dart';
 import '../../../shared/widgets/app_assets.dart';
@@ -63,7 +64,18 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
   Future<void> _facebook() async {
     final ok =
         await ref.read(authControllerProvider.notifier).loginWithFacebook();
-    if (ok && mounted) context.go(AppRoutes.home);
+    if (!mounted) return;
+    if (ok) {
+      AppLogger.auth('Navigation after successful Facebook login: /home');
+      context.go(AppRoutes.home);
+      return;
+    }
+
+    final message = ref.read(authControllerProvider.notifier).errorMessage ??
+        'Facebook sign-in could not be completed.';
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
   }
 
   Future<void> _google() async {
@@ -85,106 +97,109 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
         fit: StackFit.expand,
         children: [
           AppBackground(
-        child: SafeArea(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const SizedBox(height: 6),
-                _LandingLudoHero(entrance: _entrance, idle: _animation),
-                const SizedBox(height: 10),
-                Text('Ludo Friends',
-                    style: AppTextStyles.display, textAlign: TextAlign.center),
-                const SizedBox(height: 6),
-                Text('Login or create an account to play with friends',
-                    style: AppTextStyles.body.copyWith(color: Colors.white70),
-                    textAlign: TextAlign.center),
-                const SizedBox(height: 22),
-                PrimaryButton(
-                  label: 'Continue as Guest',
-                  icon: Icons.bolt_rounded,
-                  gradient: const LinearGradient(
-                      colors: [Color(0xFF8E8AA6), Color(0xFF5C5874)]),
-                  onPressed: loading ? null : _guest,
-                ),
-                const SizedBox(height: 12),
-                _SocialButton(
-                  label: 'Continue with Facebook',
-                  asset: AppAssets.facebookBrand,
-                  backgroundColor: const Color(0xFF1877F2),
-                  foregroundColor: Colors.white,
-                  onPressed: loading ? null : _facebook,
-                ),
-                const SizedBox(height: 12),
-                _SocialButton(
-                  label: 'Continue with Gmail',
-                  asset: AppAssets.gmailBrand,
-                  backgroundColor: Colors.white,
-                  foregroundColor: AppColors.ink,
-                  onPressed: loading ? null : _google,
-                ),
-                const SizedBox(height: 14),
-                OutlinedButton.icon(
-                  onPressed:
-                      loading ? null : () => context.push(AppRoutes.register),
-                  icon: const Icon(Icons.person_add_alt_1_rounded),
-                  label: const Text('Register with Email'),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.white,
-                    side:
-                        BorderSide(color: Colors.white.withValues(alpha: 0.58)),
-                    padding: const EdgeInsets.symmetric(vertical: 15),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(18)),
-                  ),
-                ),
-                const SizedBox(height: 18),
-                Row(
+            child: SafeArea(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Expanded(
-                        child: Divider(
-                            color: Colors.white.withValues(alpha: 0.35))),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                      child: Text('manual email login',
-                          style: AppTextStyles.label
-                              .copyWith(color: Colors.white70)),
+                    const SizedBox(height: 6),
+                    _LandingLudoHero(entrance: _entrance, idle: _animation),
+                    const SizedBox(height: 10),
+                    Text('Ludo Friends',
+                        style: AppTextStyles.display,
+                        textAlign: TextAlign.center),
+                    const SizedBox(height: 6),
+                    Text('Login or create an account to play with friends',
+                        style:
+                            AppTextStyles.body.copyWith(color: Colors.white70),
+                        textAlign: TextAlign.center),
+                    const SizedBox(height: 22),
+                    PrimaryButton(
+                      label: 'Continue as Guest',
+                      icon: Icons.bolt_rounded,
+                      gradient: const LinearGradient(
+                          colors: [Color(0xFF8E8AA6), Color(0xFF5C5874)]),
+                      onPressed: loading ? null : _guest,
                     ),
-                    Expanded(
-                        child: Divider(
-                            color: Colors.white.withValues(alpha: 0.35))),
+                    const SizedBox(height: 12),
+                    _SocialButton(
+                      label: 'Continue with Facebook',
+                      asset: AppAssets.facebookBrand,
+                      backgroundColor: const Color(0xFF1877F2),
+                      foregroundColor: Colors.white,
+                      onPressed: loading ? null : _facebook,
+                    ),
+                    const SizedBox(height: 12),
+                    _SocialButton(
+                      label: 'Continue with Gmail',
+                      asset: AppAssets.gmailBrand,
+                      backgroundColor: Colors.white,
+                      foregroundColor: AppColors.ink,
+                      onPressed: loading ? null : _google,
+                    ),
+                    const SizedBox(height: 14),
+                    OutlinedButton.icon(
+                      onPressed: loading
+                          ? null
+                          : () => context.push(AppRoutes.register),
+                      icon: const Icon(Icons.person_add_alt_1_rounded),
+                      label: const Text('Register with Email'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.white,
+                        side: BorderSide(
+                            color: Colors.white.withValues(alpha: 0.58)),
+                        padding: const EdgeInsets.symmetric(vertical: 15),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(18)),
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    Row(
+                      children: [
+                        Expanded(
+                            child: Divider(
+                                color: Colors.white.withValues(alpha: 0.35))),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          child: Text('manual email login',
+                              style: AppTextStyles.label
+                                  .copyWith(color: Colors.white70)),
+                        ),
+                        Expanded(
+                            child: Divider(
+                                color: Colors.white.withValues(alpha: 0.35))),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+                    _Field(controller: _email, hint: 'Email', icon: Icons.mail),
+                    const SizedBox(height: 14),
+                    _Field(
+                        controller: _password,
+                        hint: 'Password',
+                        icon: Icons.lock,
+                        obscure: true),
+                    if (error != null) ...[
+                      const SizedBox(height: 12),
+                      Text(error,
+                          style: AppTextStyles.label
+                              .copyWith(color: Colors.amberAccent)),
+                    ],
+                    const SizedBox(height: 22),
+                    PrimaryButton(
+                        label: 'Login with Email',
+                        onPressed: loading ? null : _login),
+                    const SizedBox(height: 18),
+                    TextButton(
+                      onPressed: () => context.push(AppRoutes.register),
+                      child: const Text('Create a new account',
+                          style: TextStyle(color: Colors.white)),
+                    ),
                   ],
                 ),
-                const SizedBox(height: 20),
-                _Field(controller: _email, hint: 'Email', icon: Icons.mail),
-                const SizedBox(height: 14),
-                _Field(
-                    controller: _password,
-                    hint: 'Password',
-                    icon: Icons.lock,
-                    obscure: true),
-                if (error != null) ...[
-                  const SizedBox(height: 12),
-                  Text(error,
-                      style: AppTextStyles.label
-                          .copyWith(color: Colors.amberAccent)),
-                ],
-                const SizedBox(height: 22),
-                PrimaryButton(
-                    label: 'Login with Email',
-                    onPressed: loading ? null : _login),
-                const SizedBox(height: 18),
-                TextButton(
-                  onPressed: () => context.push(AppRoutes.register),
-                  child: const Text('Create a new account',
-                      style: TextStyle(color: Colors.white)),
-                ),
-              ],
+              ),
             ),
           ),
-        ),
-      ),
           LudoLoadingOverlay(visible: loading, message: 'Signing you in…'),
         ],
       ),
@@ -209,8 +224,10 @@ class _LandingLudoHero extends StatelessWidget {
         builder: (context, child) {
           // Entrance: ease-out spin + scale + fade.
           final e = Curves.easeOutCubic.transform(entrance.value);
-          final settle = Curves.easeOutBack.transform(entrance.value.clamp(0.0, 1.0));
-          final spinIn = (1 - e) * (2 * math.pi * 2); // ~2 turns, unwinding to 0
+          final settle =
+              Curves.easeOutBack.transform(entrance.value.clamp(0.0, 1.0));
+          final spinIn =
+              (1 - e) * (2 * math.pi * 2); // ~2 turns, unwinding to 0
           final scale = 0.35 + 0.65 * settle;
           final opacity = e;
 

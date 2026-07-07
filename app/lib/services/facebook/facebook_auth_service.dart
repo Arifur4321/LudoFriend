@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_facebook_auth/flutter_facebook_auth.dart';
 
 import '../../core/config/app_config.dart';
+import '../../core/utils/logger.dart';
 import '../social/social_auth_exception.dart';
 
 /// Minimal Facebook profile fetched after login.
@@ -42,25 +43,45 @@ class FacebookFriend {
 class FacebookAuthService {
   Future<FacebookProfile?> login() async {
     _ensureEnabled();
+    AppLogger.auth('Facebook login started');
     final result = await FacebookAuth.instance.login(
       permissions: const ['public_profile'],
     );
+    final token = result.accessToken;
+    AppLogger.auth('Facebook LoginResult.status=${result.status.name}');
+    AppLogger.auth('Facebook LoginResult.message=${result.message ?? ''}');
+    AppLogger.auth('Facebook accessToken exists=${token != null}');
+    AppLogger.auth('Facebook accessToken userId=${_tokenUserId(token) ?? ''}');
+    AppLogger.auth(
+      'Facebook token string length=${token?.tokenString.length ?? 0}',
+    );
+
     if (result.status == LoginStatus.cancelled) return null;
-    if (result.status != LoginStatus.success || result.accessToken == null) {
+    if (result.status != LoginStatus.success || token == null) {
       throw SocialAuthException(
         result.message ?? 'Facebook sign-in could not be completed.',
       );
     }
 
-    final data = await FacebookAuth.instance.getUserData(
-      fields: 'id,name,picture.width(200)',
-    );
+    var data = <String, dynamic>{};
+    try {
+      data = await FacebookAuth.instance.getUserData(
+        fields: 'id,name,picture.width(200)',
+      );
+    } catch (e, s) {
+      AppLogger.e(
+        'Facebook getUserData failed; continuing with access token',
+        e,
+        s,
+      );
+    }
+
     return FacebookProfile(
-      id: '${data['id']}',
+      id: '${data['id'] ?? _tokenUserId(token) ?? ''}',
       name: data['name'] as String? ?? 'Facebook Player',
       email: data['email'] as String?,
       pictureUrl: _pictureUrl(data),
-      accessToken: result.accessToken!.tokenString,
+      accessToken: token.tokenString,
     );
   }
 
@@ -102,6 +123,12 @@ class FacebookAuthService {
     final pictureData = picture['data'];
     if (pictureData is! Map<String, dynamic>) return null;
     return pictureData['url'] as String?;
+  }
+
+  String? _tokenUserId(AccessToken? token) {
+    if (token is ClassicToken) return token.userId;
+    if (token is LimitedToken) return token.userId;
+    return null;
   }
 }
 

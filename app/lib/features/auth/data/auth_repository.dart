@@ -8,6 +8,7 @@ import '../../../core/network/api_endpoints.dart';
 import '../../../core/network/api_result.dart';
 import '../../../core/network/dio_client.dart';
 import '../../../core/storage/secure_storage.dart';
+import '../../../core/utils/logger.dart';
 import 'auth_user.dart';
 
 /// Talks to the auth API, persisting the Sanctum token on success.
@@ -94,12 +95,22 @@ class AuthRepository {
 
   Future<Result<AuthUser>> facebook(String accessToken) async {
     try {
-      final res = await _dio
-          .post(ApiEndpoints.facebook, data: {'access_token': accessToken});
+      AppLogger.auth('Backend POST /auth/facebook started');
+      final res = await _dio.post(
+        ApiEndpoints.facebook,
+        data: {'access_token': accessToken},
+      );
+      AppLogger.auth('Backend /auth/facebook status=${res.statusCode}');
       final user = _userFromResponse(res.data);
       await _persist(user);
       return Ok(user);
     } catch (e) {
+      if (e is DioException) {
+        AppLogger.auth(
+          'Backend /auth/facebook error status=${e.response?.statusCode}',
+        );
+        AppLogger.auth('Backend /auth/facebook error body=${e.response?.data}');
+      }
       return Err(DioClient.mapError(e));
     }
   }
@@ -131,8 +142,12 @@ class AuthRepository {
   }
 
   Future<void> _persist(AuthUser user) async {
-    if (user.token != null && user.token!.isNotEmpty) {
+    final hasToken = user.token != null && user.token!.isNotEmpty;
+    if (hasToken) {
       await _storage.saveToken(user.token!);
+      AppLogger.auth('Sanctum token saved=true');
+    } else {
+      AppLogger.auth('Sanctum token saved=false');
     }
   }
 

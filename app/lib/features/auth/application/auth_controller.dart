@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/errors/failures.dart';
+import '../../../core/utils/logger.dart';
 import '../../../services/facebook/facebook_auth_service.dart';
 import '../../../services/google/google_auth_service.dart';
 import '../../../services/social/social_auth_exception.dart';
@@ -71,16 +72,19 @@ class AuthController extends AsyncNotifier<AuthUser?> {
       final res = await _repo.facebook(profile.accessToken);
       return res.when(
         ok: (u) {
+          AppLogger.auth('Facebook backend login succeeded');
           state = AsyncData(u.copyWith(
               name: u.name, avatarUrl: u.avatarUrl ?? profile.pictureUrl));
           return true;
         },
         err: (f) {
+          AppLogger.auth('Facebook backend login failed: ${f.message}');
           state = AsyncError(f, StackTrace.current);
           return false;
         },
       );
     } on SocialAuthException catch (e) {
+      AppLogger.auth('Facebook login failed before backend: ${e.message}');
       state = AsyncError(AuthFailure(e.message), StackTrace.current);
       return false;
     }
