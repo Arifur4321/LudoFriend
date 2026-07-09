@@ -6,6 +6,7 @@ import '../../features/auth/presentation/login_screen.dart';
 import '../../features/auth/presentation/register_screen.dart';
 import '../../features/boards/presentation/board_select_screen.dart';
 import '../../features/common/presentation/no_internet_screen.dart';
+import '../../features/friends/presentation/friends_screen.dart';
 import '../../features/game/presentation/game_screen.dart';
 import '../../features/help/presentation/help_rules_screen.dart';
 import '../../features/home/presentation/home_screen.dart';
@@ -68,6 +69,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       route(AppRoutes.profile, const ProfileScreen()),
       route(AppRoutes.leaderboard, const LeaderboardScreen()),
       route(AppRoutes.settings, const SettingsScreen()),
+      route(AppRoutes.friends, const FriendsScreen()),
       route(AppRoutes.help, const HelpRulesScreen()),
       route(AppRoutes.noInternet, const NoInternetScreen()),
       // Economy

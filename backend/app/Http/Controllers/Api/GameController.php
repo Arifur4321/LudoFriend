@@ -29,7 +29,7 @@ class GameController extends Controller
     {
         $this->authorize('view', $match);
 
-        return new MatchResource($match->load(['players', 'state']));
+        return new MatchResource($match->load(['players.user', 'state']));
     }
 
     /** Roll the dice for the caller's color. */
@@ -101,7 +101,7 @@ class GameController extends Controller
         }
 
         return response()->json([
-            'data' => (new MatchResource($match->load(['players', 'state'])))->resolve(),
+            'data' => (new MatchResource($match->load(['players.user', 'state'])))->resolve(),
         ]);
     }
 }

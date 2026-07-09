@@ -24,6 +24,8 @@ class GuestSession extends Model
     {
         return [
             'last_seen_at' => 'datetime',
+            // Opaque guest re-auth secret is encrypted at rest.
+            'token' => 'encrypted',
         ];
     }
 

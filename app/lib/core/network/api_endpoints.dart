@@ -16,9 +16,13 @@ abstract class ApiEndpoints {
   static const String stats = '/profile/stats';
   static const String matchHistory = '/profile/matches';
 
-  // Friends
+  // Friends / presence
   static const String friends = '/friends';
+  static const String friendsFacebook = '/friends/facebook';
   static const String invite = '/friends/invite';
+  static const String friendsAccept = '/friends/accept';
+  static const String inviteToRoom = '/friends/invite-to-room';
+  static const String presencePing = '/presence/ping';
   static String acceptInvite(String code) => '/friends/accept/$code';
 
   // Rooms
@@ -39,6 +43,8 @@ abstract class ApiEndpoints {
   static String rollDice(String matchId) => '/matches/$matchId/roll';
   static String moveToken(String matchId) => '/matches/$matchId/move';
   static String reconnect(String matchId) => '/matches/$matchId/reconnect';
+  static String chatMessage(String matchId) => '/matches/$matchId/chat';
+  static String chatEmoji(String matchId) => '/matches/$matchId/emoji';
 
   // Leaderboard
   static const String leaderboard = '/leaderboard';

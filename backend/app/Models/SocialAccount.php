@@ -28,6 +28,9 @@ class SocialAccount extends Model
         return [
             'token_expires_at' => 'datetime',
             'meta' => 'array',
+            // Third-party OAuth secrets are encrypted at rest.
+            'access_token' => 'encrypted',
+            'refresh_token' => 'encrypted',
         ];
     }
 

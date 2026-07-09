@@ -76,6 +76,16 @@ abstract class AppConfig {
     }
   }
 
+  /// Absolute URL of Laravel's `/broadcasting/auth` (at the app root, NOT under
+  /// `/api/v1`). Used to authorize private Reverb/Pusher channels with the
+  /// bearer token.
+  static String get broadcastingAuthUrl {
+    final base = apiBaseUrl;
+    final i = base.indexOf('/api/');
+    final root = i >= 0 ? base.substring(0, i) : base;
+    return '$root/broadcasting/auth';
+  }
+
   static String get wsHost {
     if (_wsHostOverride.isNotEmpty) return _wsHostOverride;
     switch (environment) {

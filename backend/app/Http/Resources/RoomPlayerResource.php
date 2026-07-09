@@ -22,6 +22,7 @@ class RoomPlayerResource extends JsonResource
                     'id' => $this->user->id,
                     'name' => $this->user->name,
                     'avatar' => $this->user->avatar,
+                    'is_guest' => (bool) $this->user->is_guest,
                 ]
             ),
         ];

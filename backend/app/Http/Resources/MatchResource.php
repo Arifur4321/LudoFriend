@@ -24,6 +24,9 @@ class MatchResource extends JsonResource
             'ended_at' => $this->ended_at,
             'players' => $this->whenLoaded('players', fn () => $this->players->map(fn ($p) => [
                 'user_id' => $p->user_id,
+                'name' => $p->is_bot ? null : optional($p->user)->name,
+                'avatar' => $p->is_bot ? null : optional($p->user)->avatar,
+                'is_guest' => $p->is_bot ? false : (bool) optional($p->user)->is_guest,
                 'color' => $p->color,
                 'team' => $p->team !== null ? (int) $p->team : null,
                 'seat' => (int) $p->seat,

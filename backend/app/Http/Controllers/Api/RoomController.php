@@ -86,7 +86,7 @@ class RoomController extends Controller
             return response()->json(['message' => $e->getMessage()], 422);
         }
 
-        return (new MatchResource($match->load(['players', 'state'])))
+        return (new MatchResource($match->load(['players.user', 'state'])))
             ->response()
             ->setStatusCode(201);
     }

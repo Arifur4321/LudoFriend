@@ -15,6 +15,7 @@ abstract class AppRoutes {
   static const String profile = '/profile';
   static const String leaderboard = '/leaderboard';
   static const String settings = '/settings';
+  static const String friends = '/friends';
   static const String help = '/help';
   static const String noInternet = '/no-internet';
 

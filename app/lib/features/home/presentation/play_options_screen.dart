@@ -9,6 +9,7 @@ import '../../../shared/theme/app_text_styles.dart';
 import '../../../shared/widgets/app_assets.dart';
 import '../../../shared/widgets/app_background.dart';
 import '../../../shared/widgets/bouncing_button.dart';
+import '../../auth/application/auth_controller.dart';
 import '../../game/application/game_config.dart';
 import '../../game/application/game_controller.dart';
 
@@ -17,8 +18,14 @@ class PlayOptionsScreen extends ConsumerWidget {
 
   void _startLocal(BuildContext context, WidgetRef ref,
       {required int humans, required int bots}) {
-    ref.read(gameConfigProvider.notifier).state =
-        GameConfig.local(humans: humans, bots: bots);
+    final me = ref.read(authControllerProvider).value;
+    ref.read(gameConfigProvider.notifier).state = GameConfig.local(
+      humans: humans,
+      bots: bots,
+      meName: me?.name,
+      meAvatarUrl: me?.avatarUrl,
+      meIsGuest: me?.isGuest ?? false,
+    );
     context.go(AppRoutes.game);
   }
 

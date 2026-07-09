@@ -1,13 +1,24 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/constants/app_constants.dart';
+import '../../../core/di/providers.dart';
+import '../../../core/network/api_endpoints.dart';
+import '../../../core/utils/logger.dart';
 import '../../../game_engine/bot/easy_bot.dart';
 import '../../../game_engine/ludo_engine.dart';
 import '../../../game_engine/models/dice.dart';
 import '../../../game_engine/models/game_status.dart';
 import '../../../services/audio/audio_service.dart';
+import '../../../services/realtime/realtime_match_service.dart';
+import '../../../services/realtime/websocket_service.dart';
+import '../../auth/application/auth_controller.dart';
+import '../../settings/application/settings_controller.dart';
+import 'game_chat_state.dart';
 import 'game_config.dart';
 import 'game_session.dart';
+import 'server_state_adapter.dart';
 
 /// Holds the [GameConfig] for the match about to be / currently played.
 /// Set during navigation, read by [gameControllerProvider].
@@ -22,19 +33,26 @@ final gameControllerProvider =
   return GameController(config, ref);
 });
 
-/// Orchestrates a local match: drives dice rolls, sequences animations, runs
-/// bot turns, and plays sound — all on top of the pure [LudoEngine].
+/// Orchestrates a match.
 ///
-/// Online play (Phase 2) will subclass / wrap this to apply server-validated
-/// moves received over the WebSocket instead of rolling locally.
+/// Offline (pass-and-play / vs-bot) it drives dice, animations, and bots on top
+/// of the pure [LudoEngine]. Online it becomes a thin client of the
+/// server-authoritative engine: roll/move go over HTTP and the authoritative
+/// snapshot is re-synced (via the state adapter) on every broadcast event —
+/// robust and free of client/server drift.
 class GameController extends StateNotifier<GameSession> {
   GameController(this.config, this._ref)
       : super(GameSession(
           game:
               LudoEngine.newGame(players: config.players, rules: config.rules),
         )) {
-    _dice = DiceRoller(config.seed);
-    _scheduleNext();
+    if (_online) {
+      // Defer so we don't mutate other providers during widget build.
+      Future.microtask(_initOnline);
+    } else {
+      _dice = DiceRoller(config.seed);
+      _scheduleNext();
+    }
   }
 
   final GameConfig config;
@@ -43,11 +61,24 @@ class GameController extends StateNotifier<GameSession> {
   final EasyBot _bot = const EasyBot();
   late final DiceRoller _dice;
   bool _busy = false;
+  StreamSubscription<RealtimeEvent>? _rtSub;
+
+  bool get _online => config.isOnline && config.matchId != null;
 
   AudioService get _audio => _ref.read(audioServiceProvider);
 
+  @override
+  void dispose() {
+    _rtSub?.cancel();
+    if (_online) {
+      _ref.read(realtimeMatchServiceProvider).leaveAll();
+    }
+    super.dispose();
+  }
+
   /// Called by the dice button (human only).
   Future<void> rollDice() async {
+    if (_online) return _sendRoll();
     if (_busy || !state.canRoll) return;
     await _performRoll();
   }
@@ -80,7 +111,6 @@ class GameController extends StateNotifier<GameSession> {
       return;
     }
     if (roll.noMove && roll.extraTurn) {
-      // Rolled a six but stuck — roll again (bot auto, human waits).
       await Future<void>.delayed(const Duration(milliseconds: 450));
       _scheduleNext();
       return;
@@ -101,6 +131,7 @@ class GameController extends StateNotifier<GameSession> {
 
   /// Called when a (human) taps a highlighted token, or internally for bots.
   Future<void> pickToken(String tokenId) async {
+    if (_online) return _sendMove(tokenId);
     if (_busy) return;
     if (state.game.status != GameStatus.awaitingMove) return;
     if (!state.game.pendingMovableTokenIds.contains(tokenId)) return;
@@ -144,5 +175,158 @@ class GameController extends StateNotifier<GameSession> {
         if (mounted) _performRoll();
       });
     }
+  }
+
+  /* =====================================================================
+   | Online (server-authoritative) path
+   | ===================================================================== */
+
+  Future<void> _initOnline() async {
+    _ref.read(currentMatchIdProvider.notifier).state = config.matchId;
+    final realtime = _ref.read(realtimeMatchServiceProvider);
+    _rtSub = realtime.events.listen(_onRealtimeEvent);
+    final matchId = int.tryParse(config.matchId ?? '');
+    if (matchId != null) {
+      await realtime.joinMatch(matchId);
+    }
+    await _refreshState();
+  }
+
+  Future<void> _refreshState() async {
+    if (!mounted) return;
+    try {
+      final res =
+          await _ref.read(dioProvider).get(ApiEndpoints.gameState(config.matchId!));
+      final serverState = _extractState(res.data);
+      if (serverState != null) _applyServerState(serverState);
+    } catch (e, st) {
+      AppLogger.e('online state refresh failed', e, st);
+    }
+  }
+
+  Future<void> _sendRoll() async {
+    if (_busy) return;
+    _busy = true;
+    state = state.copyWith(isRolling: true, banner: null);
+    _audio.play(Sfx.dice);
+    try {
+      final res = await _ref.read(dioProvider).post(
+        ApiEndpoints.rollDice(config.matchId!),
+        data: {'color': config.myColor},
+      );
+      final data = _payload(res.data);
+      final serverState = _asMap(data['state']);
+      final movable =
+          ServerStateAdapter.movableIds(config.myColor ?? '', data['legal_moves']);
+      if (serverState != null) {
+        _applyServerState(serverState, movable: movable);
+      } else {
+        state = state.copyWith(isRolling: false);
+      }
+      _busy = false;
+      // Auto-play a forced single move for snappier turns.
+      if (movable.length == 1) {
+        await _sendMove(movable.first);
+      }
+    } catch (e, st) {
+      AppLogger.e('online roll failed', e, st);
+      state = state.copyWith(isRolling: false);
+      _busy = false;
+    }
+  }
+
+  Future<void> _sendMove(String tokenId) async {
+    final parts = tokenId.split('_');
+    final color = parts.isNotEmpty ? parts[0] : (config.myColor ?? '');
+    final token = int.tryParse(parts.length > 1 ? parts[1] : '') ?? 0;
+    try {
+      _audio.play(Sfx.move);
+      final res = await _ref.read(dioProvider).post(
+        ApiEndpoints.moveToken(config.matchId!),
+        data: {'color': color, 'token': token},
+      );
+      final data = _payload(res.data);
+      final serverState = _asMap(data['state']);
+      if (serverState != null) {
+        _applyServerState(serverState);
+        if (data['winner'] != null) _audio.play(Sfx.win);
+      }
+    } catch (e, st) {
+      AppLogger.e('online move failed', e, st);
+    }
+  }
+
+  void _applyServerState(
+    Map<String, dynamic> serverState, {
+    List<String> movable = const [],
+  }) {
+    if (!mounted) return;
+    final game = ServerStateAdapter.toGameState(
+      serverState: serverState,
+      players: config.players,
+      rules: config.rules,
+      movableTokenIds: movable,
+    );
+    state = GameSession(game: game, diceFace: game.lastDice);
+  }
+
+  void _onRealtimeEvent(RealtimeEvent ev) {
+    if (!mounted) return;
+    switch (ev.event) {
+      case 'game.dice_rolled':
+      case 'game.token_moved':
+      case 'game.turn_changed':
+      case 'game.ended':
+      case 'game.player_reconnected':
+      case 'game.player_disconnected':
+        _refreshState();
+        break;
+      case 'chat.message':
+        if (_ref.read(settingsControllerProvider).chat) {
+          final myId = _ref.read(authControllerProvider).valueOrNull?.id;
+          final mine =
+              myId != null && ev.data['user_id']?.toString() == myId;
+          final body = ev.data['body'] as String? ?? '';
+          if (body.isEmpty) break;
+          if (mine) {
+            _ref.read(gameChatProvider.notifier).addLocal(body);
+          } else {
+            _ref.read(gameChatProvider.notifier).addRemote(
+                  ev.data['name'] as String? ?? 'Player',
+                  body,
+                );
+          }
+        }
+        break;
+      case 'chat.emoji':
+        if (_ref.read(settingsControllerProvider).emoji) {
+          final emoji = ev.data['emoji'] as String? ?? '';
+          if (emoji.isNotEmpty) {
+            _ref.read(incomingEmojiProvider.notifier).state = emoji;
+          }
+        }
+        break;
+    }
+  }
+
+  // ---- response helpers ----------------------------------------------------
+
+  /// Unwrap `{ "data": {...} }` (or a bare body) to the inner map.
+  Map<String, dynamic> _payload(dynamic body) {
+    if (body is Map) {
+      final inner = body['data'];
+      if (inner is Map) return inner.cast<String, dynamic>();
+      return body.cast<String, dynamic>();
+    }
+    return const {};
+  }
+
+  Map<String, dynamic>? _asMap(dynamic v) =>
+      v is Map ? v.cast<String, dynamic>() : null;
+
+  /// Pull the compact match `state` out of a MatchResource response.
+  Map<String, dynamic>? _extractState(dynamic body) {
+    final root = _payload(body);
+    return _asMap(root['state']);
   }
 }

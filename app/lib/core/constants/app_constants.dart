@@ -21,6 +21,10 @@ abstract class AppConstants {
   // Prefs keys.
   static const String kSoundEnabled = 'sound_enabled';
   static const String kMusicEnabled = 'music_enabled';
+  static const String kVibration = 'vibration_enabled';
+  static const String kTurnAlerts = 'turn_alerts_enabled';
+  static const String kChatEnabled = 'chat_enabled';
+  static const String kEmojiEnabled = 'emoji_enabled';
   static const String kOnboardingDone = 'onboarding_done';
   static const String kGuestName = 'guest_name';
   static const String kLocale = 'locale_code';

@@ -46,3 +46,11 @@ Broadcast::channel('match.{matchId}', function (User $user, int $matchId) {
 
     return $match->players()->where('user_id', $user->id)->exists();
 });
+
+/**
+ * user.{id} — a private channel for the user themselves. Used for directed
+ * notifications like friend "come play" room invites.
+ */
+Broadcast::channel('user.{id}', function (User $user, int $id) {
+    return (int) $user->id === (int) $id;
+});

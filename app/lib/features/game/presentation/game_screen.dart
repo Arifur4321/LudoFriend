@@ -2,18 +2,31 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/router/app_routes.dart';
+import '../../../game_engine/models/game_player.dart';
 import '../../../game_engine/models/game_status.dart';
+import '../../../game_engine/models/ludo_color.dart';
 import '../../../shared/theme/app_colors.dart';
-import '../../../shared/theme/app_text_styles.dart';
+import '../../../shared/theme/board_theme.dart';
 import '../../../shared/widgets/app_background.dart';
+import '../../settings/application/settings_controller.dart';
+import '../application/game_chat_state.dart';
 import '../application/game_config.dart';
 import '../application/game_controller.dart';
+import '../application/game_session.dart';
 import 'widgets/dice_widget.dart';
+import 'widgets/game_action_bar.dart';
+import 'widgets/game_chat.dart';
 import 'widgets/ludo_board.dart';
-import 'widgets/player_chip.dart';
+import 'widgets/ludo_header.dart';
+import 'widgets/player_pod.dart';
 import 'widgets/turn_timer_bar.dart';
 import 'widgets/winner_overlay.dart';
 
+/// The live "table": LUDO header, four corner player pods each with their own
+/// dice (the active player's is enlarged and, for you, tappable), the board in
+/// the middle, a turn status strip, and the Chat/Emoji/Friends/Settings bar.
+/// The same layout is used for every board tier.
 class GameScreen extends ConsumerWidget {
   const GameScreen({super.key});
 
@@ -21,13 +34,60 @@ class GameScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final config = ref.watch(gameConfigProvider);
     if (config == null) {
-      return const Scaffold(
-        body: Center(child: Text('No game in progress')),
-      );
+      return const Scaffold(body: Center(child: Text('No game in progress')));
     }
 
     final session = ref.watch(gameControllerProvider);
+    final controller = ref.read(gameControllerProvider.notifier);
     final game = session.game;
+    final theme = ref.watch(activeBoardThemeProvider);
+    final settings = ref.watch(settingsControllerProvider);
+
+    // Float incoming emoji reactions over the board.
+    ref.listen<String?>(incomingEmojiProvider, (prev, next) {
+      if (next != null && context.mounted) {
+        flashEmoji(context, next);
+        Future.microtask(
+            () => ref.read(incomingEmojiProvider.notifier).state = null);
+      }
+    });
+
+    GamePlayer? seatOf(LudoColor c) {
+      for (final p in game.players) {
+        if (p.color == c) return p;
+      }
+      return null;
+    }
+
+    Widget corner(LudoColor c, {required bool mirror}) {
+      final p = seatOf(c);
+      if (p == null) return const SizedBox.shrink();
+      final isActive = !game.isFinished && game.currentPlayer.color == c;
+      final homeCount = game.tokensOf(c).where((t) => t.isFinished).length;
+      final pod = PlayerPod(
+        player: p,
+        active: isActive,
+        homeCount: homeCount,
+        online: !p.isBot,
+        mirror: mirror,
+      );
+      final die = _PodDice(
+        active: isActive,
+        color: AppColors.of(c),
+        session: session,
+        isLocalHuman: isActive && p.isHuman,
+        onRoll: controller.rollDice,
+      );
+      final items = mirror
+          ? [die, const SizedBox(width: 6), pod]
+          : [pod, const SizedBox(width: 6), die];
+      // FittedBox guards against a RenderFlex overflow on very narrow phones.
+      return FittedBox(
+        fit: BoxFit.scaleDown,
+        alignment: mirror ? Alignment.centerRight : Alignment.centerLeft,
+        child: Row(mainAxisSize: MainAxisSize.min, children: items),
+      );
+    }
 
     return Scaffold(
       body: AppBackground(
@@ -36,41 +96,59 @@ class GameScreen extends ConsumerWidget {
             children: [
               Column(
                 children: [
-                  _TopBar(onLeave: () => _confirmLeave(context)),
+                  // Header row: back + wordmark.
                   Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    child: Wrap(
-                      alignment: WrapAlignment.center,
-                      spacing: 8,
-                      runSpacing: 8,
+                    padding: const EdgeInsets.fromLTRB(4, 2, 4, 0),
+                    child: Row(
                       children: [
-                        for (var i = 0; i < game.players.length; i++)
-                          PlayerChip(
-                            player: game.players[i],
-                            active: i == game.currentPlayerIndex &&
-                                !game.isFinished,
-                            homeCount: game
-                                .tokensOf(game.players[i].color)
-                                .where((t) => t.isFinished)
-                                .length,
-                          ),
+                        IconButton(
+                          onPressed: () => _confirmLeave(context),
+                          icon: const Icon(Icons.arrow_back_rounded,
+                              color: Colors.white),
+                        ),
+                        Expanded(
+                          child: Center(child: LudoHeader(tierName: theme.name)),
+                        ),
+                        const SizedBox(width: 48),
                       ],
                     ),
                   ),
+                  // Top pods: RED (top-left) · GREEN (top-right).
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Align(
+                            alignment: Alignment.centerLeft,
+                            child: corner(LudoColor.red, mirror: false),
+                          ),
+                        ),
+                        Expanded(
+                          child: Align(
+                            alignment: Alignment.centerRight,
+                            child: corner(LudoColor.green, mirror: true),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  // Board.
                   Expanded(
                     child: Center(
                       child: Padding(
-                        padding: const EdgeInsets.all(12),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 4),
                         child: AspectRatio(
                           aspectRatio: 1,
                           child: DecoratedBox(
                             decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(20),
+                              borderRadius: BorderRadius.circular(22),
                               boxShadow: [
                                 BoxShadow(
-                                  color: Colors.black.withValues(alpha: 0.25),
-                                  blurRadius: 20,
-                                  offset: const Offset(0, 8),
+                                  color: Colors.black.withValues(alpha: 0.28),
+                                  blurRadius: 22,
+                                  offset: const Offset(0, 10),
                                 ),
                               ],
                             ),
@@ -80,7 +158,45 @@ class GameScreen extends ConsumerWidget {
                       ),
                     ),
                   ),
-                  _BottomPanel(),
+                  // Bottom pods: BLUE (bottom-left) · YELLOW (bottom-right).
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Align(
+                            alignment: Alignment.centerLeft,
+                            child: corner(LudoColor.blue, mirror: false),
+                          ),
+                        ),
+                        Expanded(
+                          child: Align(
+                            alignment: Alignment.centerRight,
+                            child: corner(LudoColor.yellow, mirror: true),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const _StatusStrip(),
+                  GameActionBar(
+                    onChat: () {
+                      if (settings.chat) {
+                        showGameChat(context);
+                      } else {
+                        _hint(context, 'Chat is off — turn it on in Settings');
+                      }
+                    },
+                    onEmoji: () {
+                      if (settings.emoji) {
+                        showGameEmojis(context, ref);
+                      } else {
+                        _hint(context, 'Emoji is off — turn it on in Settings');
+                      }
+                    },
+                    onFriends: () => context.push(AppRoutes.friends),
+                    onSettings: () => context.push(AppRoutes.settings),
+                  ),
                 ],
               ),
               if (game.isFinished && game.winner != null)
@@ -89,8 +205,10 @@ class GameScreen extends ConsumerWidget {
                   winnerName: game.players
                       .firstWhere((p) => p.color == game.winner)
                       .name,
-                  onRematch: () => _rematch(ref, config),
-                  onHome: () => context.go('/home'),
+                  onRematch: () => config.isOnline
+                      ? context.go(AppRoutes.home)
+                      : _rematch(ref, config),
+                  onHome: () => context.go(AppRoutes.home),
                 ),
             ],
           ),
@@ -106,7 +224,6 @@ class GameScreen extends ConsumerWidget {
       rules: config.rules,
       seed: DateTime.now().millisecondsSinceEpoch,
       autoMoveSingle: config.autoMoveSingle,
-      // Preserve the chosen board so a rematch stays on the same table.
       boardThemeKey: config.boardThemeKey,
       stake: config.stake,
       teamMode: config.teamMode,
@@ -129,36 +246,73 @@ class GameScreen extends ConsumerWidget {
         ],
       ),
     );
-    if (leave == true && context.mounted) context.go('/home');
+    if (leave == true && context.mounted) context.go(AppRoutes.home);
   }
 }
 
-class _TopBar extends StatelessWidget {
-  const _TopBar({required this.onLeave});
-  final VoidCallback onLeave;
+void _hint(BuildContext context, String message) {
+  ScaffoldMessenger.of(context)
+      .showSnackBar(SnackBar(content: Text(message)));
+}
+
+/// A per-player die. The active player's die is larger and animates; when it's
+/// your turn it is tappable to roll. Inactive dice are dimmed placeholders so
+/// each seat visibly "has" a die near it.
+class _PodDice extends StatelessWidget {
+  const _PodDice({
+    required this.active,
+    required this.color,
+    required this.session,
+    required this.isLocalHuman,
+    required this.onRoll,
+  });
+
+  final bool active;
+  final Color color;
+  final GameSession session;
+  final bool isLocalHuman;
+  final VoidCallback onRoll;
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(8, 6, 8, 4),
-      child: Row(
-        children: [
-          IconButton(
-            onPressed: onLeave,
-            icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
+    final die = DiceWidget(
+      face: active ? session.diceFace : null,
+      rolling: active && session.isRolling,
+      enabled: isLocalHuman && session.canRoll,
+      onRoll: onRoll,
+      size: active ? 48 : 34,
+      tint: color,
+    );
+
+    if (!active) return Opacity(opacity: 0.35, child: die);
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        die,
+        if (isLocalHuman && session.canRoll)
+          const Padding(
+            padding: EdgeInsets.only(top: 2),
+            child: Text(
+              'TAP',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 9,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0.5,
+              ),
+            ),
           ),
-          const Spacer(),
-          Text('Ludo Friends',
-              style: AppTextStyles.title.copyWith(color: Colors.white)),
-          const Spacer(),
-          const SizedBox(width: 48),
-        ],
-      ),
+      ],
     );
   }
 }
 
-class _BottomPanel extends ConsumerWidget {
+/// The turn status line + (for a waiting human) an auto-acting countdown bar so
+/// a match never stalls on an idle player.
+class _StatusStrip extends ConsumerWidget {
+  const _StatusStrip();
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final session = ref.watch(gameControllerProvider);
@@ -175,9 +329,12 @@ class _BottomPanel extends ConsumerWidget {
     } else if (current.isBot) {
       status = '${current.name} is thinking…';
     } else if (game.status == GameStatus.awaitingMove) {
-      status = 'Tap a glowing token';
+      status =
+          current.isHuman ? 'Tap a glowing token' : "${current.name}'s move";
     } else {
-      status = current.isHuman ? 'Your turn — roll!' : "${current.name}'s turn";
+      status = current.isHuman
+          ? 'Your turn — tap the dice!'
+          : "${current.name}'s turn";
     }
 
     final showTimer = current.isHuman &&
@@ -187,41 +344,26 @@ class _BottomPanel extends ConsumerWidget {
             game.status == GameStatus.awaitingMove);
 
     return Container(
-      margin: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.96),
-        borderRadius: BorderRadius.circular(22),
-      ),
+      margin: const EdgeInsets.fromLTRB(28, 2, 28, 2),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           if (showTimer)
-            TurnTimerBar(
-              key: ValueKey(
-                  '${game.turnCount}-${game.status}-${game.currentPlayerIndex}-${session.diceFace}'),
-              seconds: game.rules.turnTimerSeconds,
-              color: color,
-              onExpire: () => _autoAct(controller, ref),
-            ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              CircleAvatar(radius: 6, backgroundColor: color),
-              const SizedBox(width: 8),
-              Expanded(child: Text(status, style: AppTextStyles.body)),
-              if (session.banner != null)
-                Text(session.banner!,
-                    style: AppTextStyles.label.copyWith(color: color)),
-              const SizedBox(width: 12),
-              DiceWidget(
-                face: session.diceFace,
-                rolling: session.isRolling,
-                enabled: session.canRoll,
-                tint: color,
-                onRoll: controller.rollDice,
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: TurnTimerBar(
+                key: ValueKey(
+                    '${game.turnCount}-${game.status}-${game.currentPlayerIndex}-${session.diceFace}'),
+                seconds: game.rules.turnTimerSeconds,
+                color: color,
+                onExpire: () => _autoAct(controller, ref),
               ),
-            ],
+            ),
+          Text(
+            status,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+                color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14),
           ),
         ],
       ),

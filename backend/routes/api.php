@@ -3,10 +3,12 @@
 use App\Http\Controllers\Api\AdminController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BoardController;
+use App\Http\Controllers\Api\ChatController;
 use App\Http\Controllers\Api\FriendController;
 use App\Http\Controllers\Api\GameController;
 use App\Http\Controllers\Api\LeaderboardController;
 use App\Http\Controllers\Api\MatchmakingController;
+use App\Http\Controllers\Api\PresenceController;
 use App\Http\Controllers\Api\ProfileController;
 use App\Http\Controllers\Api\ReportController;
 use App\Http\Controllers\Api\RoomController;
@@ -59,8 +61,12 @@ Route::prefix('v1')->group(function () {
 
             // Friends
             Route::get('friends', [FriendController::class, 'index']);
+            Route::get('friends/facebook', [FriendController::class, 'facebook']);
             Route::post('friends/invite', [FriendController::class, 'invite']);
             Route::post('friends/accept', [FriendController::class, 'acceptByCode']);
+
+            // Presence heartbeat (drives friends' online status).
+            Route::post('presence/ping', [PresenceController::class, 'ping']);
 
             // Leaderboard
             Route::get('leaderboard', [LeaderboardController::class, 'index']);
@@ -104,6 +110,13 @@ Route::prefix('v1')->group(function () {
             Route::post('matches/{match}/roll', [GameController::class, 'roll']);
             Route::post('matches/{match}/move', [GameController::class, 'move']);
             Route::post('matches/{match}/reconnect', [GameController::class, 'reconnect']);
+
+            // In-match chat + emoji reactions.
+            Route::post('matches/{match}/chat', [ChatController::class, 'message']);
+            Route::post('matches/{match}/emoji', [ChatController::class, 'emoji']);
+
+            // Friend "come play" room invite.
+            Route::post('friends/invite-to-room', [FriendController::class, 'inviteToRoom']);
         });
 
         /* -----------------------------------------------------------
