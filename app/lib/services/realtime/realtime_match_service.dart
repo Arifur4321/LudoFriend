@@ -8,13 +8,15 @@ import '../../core/di/providers.dart';
 import '../../core/utils/logger.dart';
 import 'websocket_service.dart';
 
-/// Subscribes to private Reverb/Pusher channels for a live match (and the
-/// signed-in user's own channel) and exposes their events.
+/// Subscribes to private Reverb/Pusher channels for rooms, live matches, and the
+/// signed-in user's own channel, and exposes their events.
 ///
 /// Private channels are authorised through Laravel's Sanctum-guarded
 /// `/broadcasting/auth` endpoint: we send the connection's `socket_id` + the
 /// channel name with the bearer token and forward the returned `auth` signature
-/// to the WebSocket subscribe frame.
+/// to the WebSocket subscribe frame. Every method is defensive — if the socket
+/// or auth fails (e.g. Reverb isn't running) it logs and no-ops rather than
+/// throwing, so the rest of the app keeps working.
 class RealtimeMatchService {
   RealtimeMatchService(this._ws, this._dio);
 
@@ -25,21 +27,35 @@ class RealtimeMatchService {
   Stream<RealtimeEvent> get events => _ws.events;
 
   Future<void> joinMatch(int matchId) => _joinPrivate('match.$matchId');
-
+  Future<void> joinRoom(int roomId) => _joinPrivate('room.$roomId');
   Future<void> joinUser(int userId) => _joinPrivate('user.$userId');
+
+  Future<void> leaveMatch(int matchId) => _leave('match.$matchId');
+  Future<void> leaveRoom(int roomId) => _leave('room.$roomId');
 
   Future<void> _joinPrivate(String name) async {
     final channel = 'private-$name';
     if (_joined.contains(channel)) return;
 
-    await _ws.connect();
-    final socketId = await _awaitSocketId();
-    String? auth;
-    if (socketId != null) {
-      auth = await _authorize(socketId, channel);
+    try {
+      await _ws.connect();
+      final socketId = await _awaitSocketId();
+      String? auth;
+      if (socketId != null) {
+        auth = await _authorize(socketId, channel);
+      }
+      await _ws.subscribe(channel, auth: auth);
+      _joined.add(channel);
+    } catch (e, st) {
+      AppLogger.e('realtime join failed for $channel', e, st);
     }
-    await _ws.subscribe(channel, auth: auth);
-    _joined.add(channel);
+  }
+
+  Future<void> _leave(String name) async {
+    final channel = 'private-$name';
+    if (_joined.remove(channel)) {
+      await _ws.unsubscribe(channel);
+    }
   }
 
   Future<String?> _awaitSocketId() async {

@@ -28,11 +28,15 @@ class FriendController extends Controller
             ->accepted()
             ->pluck('friend_user_id');
 
-        $friends = User::whereIn('id', $friendIds)->with('profile')->get();
+        $friends = User::whereIn('id', $friendIds)->get()->map(fn (User $u) => [
+            'id' => $u->id,
+            'name' => $u->name,
+            'avatar' => $u->avatar,
+            'is_guest' => (bool) $u->is_guest,
+            'online' => (bool) Cache::get("presence:online:{$u->id}", false),
+        ])->values();
 
-        return response()->json([
-            'data' => UserResource::collection($friends),
-        ]);
+        return response()->json(['data' => $friends]);
     }
 
     /**

@@ -259,12 +259,39 @@ class RoomService
 
             $this->engine->initializeState($match, $turnOrder);
 
+            $this->linkPlayersAsFriends($players);
+
             $room->update(['status' => 'in_progress']);
 
             broadcast(new GameStarted($room->id, $match->id, $turnOrder));
 
             return $match->fresh(['players', 'state']);
         });
+    }
+
+    /**
+     * After a match starts, make all human participants mutual accepted friends
+     * so they see each other in their friends list next time (idempotent). This
+     * is what makes "play together once, then they're saved" work.
+     *
+     * @param  \Illuminate\Support\Collection<int,GameRoomPlayer>  $players
+     */
+    private function linkPlayersAsFriends($players): void
+    {
+        $humanIds = $players->where('is_bot', false)
+            ->pluck('user_id')->filter()->values()->all();
+
+        foreach ($humanIds as $a) {
+            foreach ($humanIds as $b) {
+                if ($a === $b) {
+                    continue;
+                }
+                \App\Models\FriendLink::firstOrCreate(
+                    ['user_id' => $a, 'friend_user_id' => $b],
+                    ['status' => 'accepted', 'source' => 'match'],
+                );
+            }
+        }
     }
 
     /* =====================================================================

@@ -25,13 +25,13 @@ abstract class ApiEndpoints {
   static const String presencePing = '/presence/ping';
   static String acceptInvite(String code) => '/friends/accept/$code';
 
-  // Rooms
+  // Rooms — backend binds {room} by id; join takes the code in the body.
   static const String rooms = '/rooms';
-  static String room(String code) => '/rooms/$code';
-  static String joinRoom(String code) => '/rooms/$code/join';
-  static String leaveRoom(String code) => '/rooms/$code/leave';
-  static String readyRoom(String code) => '/rooms/$code/ready';
-  static String startRoom(String code) => '/rooms/$code/start';
+  static const String joinRoom = '/rooms/join';
+  static String roomById(int id) => '/rooms/$id';
+  static String leaveRoom(int id) => '/rooms/$id/leave';
+  static String readyRoom(int id) => '/rooms/$id/ready';
+  static String startRoom(int id) => '/rooms/$id/start';
 
   // Matchmaking
   static const String matchmakingEnqueue = '/matchmaking/enqueue';

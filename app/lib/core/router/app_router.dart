@@ -46,6 +46,10 @@ CustomTransitionPage<void> _fade(Widget child, GoRouterState state) {
   );
 }
 
+/// Root navigator key — lets app-wide services (e.g. the friend-invite
+/// listener) show dialogs and navigate without holding a widget context.
+final rootNavigatorKey = GlobalKey<NavigatorState>();
+
 final appRouterProvider = Provider<GoRouter>((ref) {
   GoRoute route(String path, Widget child) => GoRoute(
         path: path,
@@ -53,6 +57,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       );
 
   return GoRouter(
+    navigatorKey: rootNavigatorKey,
     initialLocation: AppRoutes.splash,
     routes: [
       route(AppRoutes.splash, const SplashScreen()),

@@ -30,3 +30,6 @@ backend/node_modules/
 backend/storage/*.key
 backend/public/storage
 backend/.phpunit.result.cache
+
+# Claude Cowork sync scratch
+.claude_tmp/

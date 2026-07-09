@@ -45,10 +45,13 @@ class FacebookAuthService {
     _ensureEnabled();
     AppLogger.auth('Facebook login started');
     final result = await FacebookAuth.instance.login(
-      // public_profile → name + photo (default). user_friends → list friends who
-      // also play this app (requires FB App Review for public use; works for
-      // testers/developers in the meantime). Declined perms don't block login.
-      permissions: const ['public_profile', 'user_friends'],
+      // public_profile → name + photo. `user_friends` is intentionally NOT
+      // requested: it is an "Invalid Scope" for apps that haven't been granted
+      // Advanced Access via Facebook App Review, and requesting it hard-errors
+      // the login dialog for developers. Friends work via friend-codes / invite
+      // links (no FB permission needed). Only re-add 'user_friends' AFTER it has
+      // been approved for this app in the Facebook dashboard.
+      permissions: const ['public_profile'],
     );
     final token = result.accessToken;
     AppLogger.auth('Facebook LoginResult.status=${result.status.name}');

@@ -2,12 +2,15 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../../../core/router/app_routes.dart';
 import '../../../shared/theme/app_colors.dart';
 import '../../../shared/theme/app_text_styles.dart';
 import '../../../shared/widgets/app_background.dart';
 import '../../auth/application/auth_controller.dart';
+import '../../room/data/room_repository.dart';
 import '../data/friends_repository.dart';
 
 /// Friends hub: your share code, add-by-code, Facebook app-friends sync, and a
@@ -100,6 +103,28 @@ class _FriendsScreenState extends ConsumerState<FriendsScreen> {
         .showSnackBar(SnackBar(content: Text(m)));
   }
 
+  /// Create a private room and invite this friend to it, then wait in the lobby.
+  /// The friend receives a "Play with you" invite on their user channel.
+  Future<void> _invite(AppFriend f) async {
+    final res = await ref
+        .read(roomRepositoryProvider)
+        .create(mode: '4p', botFill: false, visibility: 'private');
+    if (!mounted) return;
+    res.when(
+      ok: (room) async {
+        ref.read(activeRoomProvider.notifier).state = room;
+        await ref
+            .read(friendsRepositoryProvider)
+            .inviteToRoom(roomId: room.id, friendUserId: f.id);
+        if (mounted) {
+          _toast('Invited ${f.name} — waiting in the lobby.');
+          context.push(AppRoutes.lobby);
+        }
+      },
+      err: (fail) => _toast(fail.message),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final me = ref.watch(authControllerProvider).valueOrNull;
@@ -184,7 +209,8 @@ class _FriendsScreenState extends ConsumerState<FriendsScreen> {
               else
                 _Card(
                   children: [
-                    for (final f in friends) _FriendTile(friend: f),
+                    for (final f in friends)
+                      _FriendTile(friend: f, onInvite: () => _invite(f)),
                   ],
                 ),
             ],
@@ -196,8 +222,9 @@ class _FriendsScreenState extends ConsumerState<FriendsScreen> {
 }
 
 class _FriendTile extends StatelessWidget {
-  const _FriendTile({required this.friend});
+  const _FriendTile({required this.friend, this.onInvite});
   final AppFriend friend;
+  final VoidCallback? onInvite;
 
   @override
   Widget build(BuildContext context) {
@@ -236,6 +263,15 @@ class _FriendTile extends StatelessWidget {
       title: Text(friend.name, style: AppTextStyles.body),
       subtitle: Text(friend.online ? 'Online' : 'Offline',
           style: AppTextStyles.bodyMuted),
+      trailing: onInvite == null
+          ? null
+          : FilledButton(
+              onPressed: onInvite,
+              style: FilledButton.styleFrom(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 4)),
+              child: const Text('Play'),
+            ),
     );
   }
 }

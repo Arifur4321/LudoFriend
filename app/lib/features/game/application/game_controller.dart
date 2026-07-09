@@ -91,7 +91,11 @@ class GameController extends StateNotifier<GameSession> {
   void dispose() {
     _rtSub?.cancel();
     if (_online) {
-      _ref.read(realtimeMatchServiceProvider).leaveAll();
+      final id = int.tryParse(config.matchId ?? '');
+      if (id != null) {
+        _ref.read(realtimeMatchServiceProvider).leaveMatch(id);
+      }
+      _ref.read(currentMatchIdProvider.notifier).state = null;
     }
     super.dispose();
   }

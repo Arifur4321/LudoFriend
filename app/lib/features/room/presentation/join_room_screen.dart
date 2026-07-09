@@ -6,7 +6,7 @@ import '../../../core/router/app_routes.dart';
 import '../../../shared/theme/app_text_styles.dart';
 import '../../../shared/widgets/app_background.dart';
 import '../../../shared/widgets/primary_button.dart';
-import '../application/room_draft.dart';
+import '../data/room_repository.dart';
 
 class JoinRoomScreen extends ConsumerStatefulWidget {
   const JoinRoomScreen({super.key});
@@ -17,6 +17,7 @@ class JoinRoomScreen extends ConsumerStatefulWidget {
 
 class _JoinRoomScreenState extends ConsumerState<JoinRoomScreen> {
   final _code = TextEditingController();
+  bool _busy = false;
 
   @override
   void dispose() {
@@ -24,24 +25,26 @@ class _JoinRoomScreenState extends ConsumerState<JoinRoomScreen> {
     super.dispose();
   }
 
-  void _join() {
+  Future<void> _join() async {
+    if (_busy) return;
     final code = _code.text.trim().toUpperCase();
     if (code.length < 4) {
       ScaffoldMessenger.of(context)
           .showSnackBar(const SnackBar(content: Text('Enter a valid code')));
       return;
     }
-    // Offline: open the lobby for this code. Online (Phase 2) verifies the
-    // code against the backend and joins the live room over the WebSocket.
-    ref.read(roomDraftProvider.notifier).state = RoomDraft(
-      code: code,
-      seats: 4,
-      botFill: true,
-      turnTimer: 20,
-      isPrivate: true,
-      isHost: false,
+    setState(() => _busy = true);
+    final res = await ref.read(roomRepositoryProvider).join(code);
+    if (!mounted) return;
+    setState(() => _busy = false);
+    res.when(
+      ok: (room) {
+        ref.read(activeRoomProvider.notifier).state = room;
+        context.push(AppRoutes.lobby);
+      },
+      err: (f) => ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(f.message))),
     );
-    context.push(AppRoutes.lobby);
   }
 
   @override
@@ -67,7 +70,7 @@ class _JoinRoomScreenState extends ConsumerState<JoinRoomScreen> {
                   maxLength: 6,
                 ),
                 const SizedBox(height: 16),
-                PrimaryButton(label: 'Join', onPressed: _join),
+                PrimaryButton(label: _busy ? 'Joining…' : 'Join', onPressed: _join),
               ],
             ),
           ),

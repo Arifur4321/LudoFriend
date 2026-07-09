@@ -32,16 +32,13 @@ class HomeScreen extends ConsumerWidget {
                 child: Row(
                   children: [
                     Expanded(
-                      child: Align(
-                        alignment: Alignment.centerLeft,
-                        child: _AccountChip(
-                          name: auth?.name ?? 'Guest',
-                          avatarUrl: auth?.avatarUrl,
-                          signedIn: auth != null,
-                          onTap: () => context.push(auth == null
-                              ? AppRoutes.login
-                              : AppRoutes.profile),
-                        ),
+                      child: _AccountChip(
+                        name: auth?.name ?? 'Guest',
+                        avatarUrl: auth?.avatarUrl,
+                        signedIn: auth != null,
+                        onTap: () => context.push(auth == null
+                            ? AppRoutes.login
+                            : AppRoutes.profile),
                       ),
                     ),
                     const SizedBox(width: 8),
@@ -156,7 +153,6 @@ class _AccountChip extends StatelessWidget {
           borderRadius: BorderRadius.circular(30),
         ),
         child: Row(
-          mainAxisSize: MainAxisSize.min,
           children: [
             ClipOval(
               child: hasPhoto
@@ -171,8 +167,8 @@ class _AccountChip extends StatelessWidget {
                   : SvgPicture.asset(AppAssets.avatarGuest, width: 28),
             ),
             const SizedBox(width: 8),
-            ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 150),
+            // Expanded + ellipsis so a long name shrinks instead of overflowing.
+            Expanded(
               child: Text(
                 name,
                 maxLines: 1,
@@ -184,7 +180,6 @@ class _AccountChip extends StatelessWidget {
             const SizedBox(width: 4),
             Icon(signedIn ? Icons.person : Icons.login,
                 color: Colors.white, size: 16),
-            const SizedBox(width: 4),
           ],
         ),
       ),

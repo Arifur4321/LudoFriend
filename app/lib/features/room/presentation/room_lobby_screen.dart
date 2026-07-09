@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -5,47 +7,137 @@ import 'package:go_router/go_router.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../../core/router/app_routes.dart';
-import '../../../core/storage/local_cache.dart';
 import '../../../game_engine/models/ludo_color.dart';
-import '../../../game_engine/rules/rule_config.dart';
+import '../../../services/realtime/realtime_match_service.dart';
+import '../../../services/realtime/websocket_service.dart';
 import '../../../shared/theme/app_colors.dart';
 import '../../../shared/theme/app_text_styles.dart';
-import '../../../shared/theme/board_theme.dart';
 import '../../../shared/widgets/app_background.dart';
 import '../../../shared/widgets/primary_button.dart';
-import '../../game/application/game_config.dart';
-import '../../game/application/game_controller.dart';
-import '../application/room_draft.dart';
+import '../../auth/application/auth_controller.dart';
+import '../../game/application/online_entry.dart';
+import '../data/room_models.dart';
+import '../data/room_repository.dart';
 
-class RoomLobbyScreen extends ConsumerWidget {
+/// Online room lobby: shows the real seated players (live over the room
+/// WebSocket channel), lets everyone ready up, and lets the host start a shared
+/// server match. Falls back gracefully if realtime isn't available.
+class RoomLobbyScreen extends ConsumerStatefulWidget {
   const RoomLobbyScreen({super.key});
 
-  void _start(BuildContext context, WidgetRef ref, RoomDraft draft) {
-    // Offline: fill the remaining seats with bots so the room is playable now.
-    // Online rooms (backend RoomController) replace these seats with networked
-    // players and start via the API — the game then runs server-authoritatively.
-    ref.read(activeBoardThemeProvider.notifier).state =
-        BoardTheme.forKey(draft.boardThemeKey);
-    ref.read(localCacheProvider).setSelectedBoardTier(draft.boardThemeKey);
-    ref.read(gameConfigProvider.notifier).state = GameConfig.local(
-      humans: 1,
-      bots: draft.seats - 1,
-      rules: RuleConfig(turnTimerSeconds: draft.turnTimer),
-      boardThemeKey: draft.boardThemeKey,
-      teamMode: draft.teamMode,
-    );
-    context.go(AppRoutes.game);
+  @override
+  ConsumerState<RoomLobbyScreen> createState() => _RoomLobbyScreenState();
+}
+
+class _RoomLobbyScreenState extends ConsumerState<RoomLobbyScreen> {
+  StreamSubscription<RealtimeEvent>? _sub;
+  bool _navigated = false;
+  bool _starting = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final room = ref.read(activeRoomProvider);
+    if (room != null) {
+      final rt = ref.read(realtimeMatchServiceProvider);
+      rt.joinRoom(room.id);
+      _sub = rt.events.listen(_onEvent);
+      // Auto-ready the local player so the host only needs to press Start.
+      ref.read(roomRepositoryProvider).ready(room.id, true).whenComplete(_refresh);
+    }
   }
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final draft = ref.watch(roomDraftProvider);
-    if (draft == null) {
+  void dispose() {
+    _sub?.cancel();
+    final room = ref.read(activeRoomProvider);
+    if (room != null) {
+      ref.read(realtimeMatchServiceProvider).leaveRoom(room.id);
+    }
+    super.dispose();
+  }
+
+  void _onEvent(RealtimeEvent ev) {
+    if (!mounted) return;
+    final room = ref.read(activeRoomProvider);
+    if (room == null || ev.channel != 'private-room.${room.id}') return;
+    if (ev.event == 'game.started') {
+      final matchId = (ev.data['match_id'] as num?)?.toInt();
+      if (matchId != null) _enter(matchId);
+      return;
+    }
+    _refresh();
+  }
+
+  Future<void> _refresh() async {
+    final room = ref.read(activeRoomProvider);
+    if (room == null) return;
+    final res = await ref.read(roomRepositoryProvider).show(room.id);
+    if (!mounted) return;
+    res.when(
+      ok: (r) {
+        ref.read(activeRoomProvider.notifier).state = r;
+        if (r.inProgress && r.matchId != null) _enter(r.matchId!);
+        setState(() {});
+      },
+      err: (_) {},
+    );
+  }
+
+  Future<void> _enter(int matchId, {OnlineMatchModel? match}) async {
+    if (_navigated) return;
+    _navigated = true;
+    await enterOnlineMatch(context, ref, matchId, match: match, onError: (m) {
+      _navigated = false;
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(m)));
+      }
+    });
+  }
+
+  Future<void> _start() async {
+    final room = ref.read(activeRoomProvider);
+    if (room == null || _starting) return;
+    setState(() => _starting = true);
+    final res = await ref.read(roomRepositoryProvider).start(room.id);
+    if (!mounted) return;
+    res.when(
+      ok: (match) => _enter(match.id, match: match),
+      err: (f) {
+        setState(() => _starting = false);
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(f.message)));
+      },
+    );
+  }
+
+  Future<void> _leave() async {
+    final room = ref.read(activeRoomProvider);
+    if (room != null) {
+      await ref.read(roomRepositoryProvider).leave(room.id);
+      ref.read(activeRoomProvider.notifier).state = null;
+    }
+    if (mounted) context.go(AppRoutes.home);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final room = ref.watch(activeRoomProvider);
+    final myId = ref.watch(authControllerProvider).valueOrNull?.id;
+    if (room == null) {
       return const Scaffold(body: Center(child: Text('No room')));
     }
+    final isHost = '${room.hostUserId}' == myId;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Room Lobby')),
+      appBar: AppBar(
+        title: const Text('Room Lobby'),
+        leading: IconButton(
+          icon: const Icon(Icons.close_rounded),
+          onPressed: _leave,
+        ),
+      ),
       extendBodyBehindAppBar: true,
       body: AppBackground(
         child: SafeArea(
@@ -64,12 +156,9 @@ class RoomLobbyScreen extends ConsumerWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text('Room code', style: AppTextStyles.label),
-                          Text(draft.code,
+                          Text(room.code,
                               style: AppTextStyles.display
                                   .copyWith(color: AppColors.primary)),
-                          if (draft.boardName != null)
-                            Text(draft.boardName!,
-                                style: AppTextStyles.bodyMuted),
                         ],
                       ),
                       const Spacer(),
@@ -77,11 +166,21 @@ class RoomLobbyScreen extends ConsumerWidget {
                         icon: const Icon(Icons.copy_rounded,
                             color: AppColors.primary),
                         onPressed: () {
-                          Clipboard.setData(ClipboardData(text: draft.code));
+                          Clipboard.setData(ClipboardData(text: room.code));
                           ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(content: Text('Code copied')),
                           );
                         },
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.ios_share_rounded,
+                            color: AppColors.primary),
+                        onPressed: () => SharePlus.instance.share(
+                          ShareParams(
+                            text:
+                                'Join my Ludo Friends room with code ${room.code}.',
+                          ),
+                        ),
                       ),
                     ],
                   ),
@@ -89,62 +188,37 @@ class RoomLobbyScreen extends ConsumerWidget {
                 const SizedBox(height: 16),
                 Expanded(
                   child: ListView.separated(
-                    itemCount: draft.seats,
+                    itemCount: room.capacity,
                     separatorBuilder: (_, __) => const SizedBox(height: 10),
                     itemBuilder: (context, i) {
-                      final you = i == 0;
-                      final filled = you || draft.botFill;
-                      return Container(
-                        padding: const EdgeInsets.all(14),
-                        decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.92),
-                            borderRadius: BorderRadius.circular(16)),
-                        child: Row(
-                          children: [
-                            CircleAvatar(
-                              backgroundColor:
-                                  AppColors.of(LudoColor.values[i % 4]),
-                              child: Icon(
-                                  you
-                                      ? Icons.person
-                                      : (draft.botFill
-                                          ? Icons.smart_toy
-                                          : Icons.hourglass_empty),
-                                  color: Colors.white,
-                                  size: 18),
-                            ),
-                            const SizedBox(width: 12),
-                            Text(
-                              you
-                                  ? 'You (host)'
-                                  : draft.botFill
-                                      ? 'Bot $i'
-                                      : 'Waiting…',
-                              style: AppTextStyles.body,
-                            ),
-                            const Spacer(),
-                            if (filled)
-                              const Icon(Icons.check_circle,
-                                  color: AppColors.success),
-                          ],
-                        ),
-                      );
+                      final seat = i < room.players.length
+                          ? room.players[i]
+                          : null;
+                      return _SeatTile(seat: seat, index: i);
                     },
                   ),
                 ),
                 Text(
-                  'Share the code so friends can join, or open Friends to invite '
-                  'Facebook friends who play. Start now to play against bots.',
+                  isHost
+                      ? 'Share the code or invite friends, then start.'
+                      : 'Waiting for the host to start…',
                   style: AppTextStyles.label.copyWith(color: Colors.white70),
                   textAlign: TextAlign.center,
                 ),
-                const SizedBox(height: 12),
-                _InvitePanel(draft: draft),
-                const SizedBox(height: 12),
-                PrimaryButton(
-                    label: 'Start Game',
+                const SizedBox(height: 8),
+                OutlinedButton.icon(
+                  onPressed: () => context.push(AppRoutes.friends),
+                  icon: const Icon(Icons.group_rounded, color: Colors.white),
+                  label: const Text('Invite friends',
+                      style: TextStyle(color: Colors.white)),
+                ),
+                const SizedBox(height: 10),
+                if (isHost)
+                  PrimaryButton(
+                    label: _starting ? 'Starting…' : 'Start Game',
                     icon: Icons.play_arrow_rounded,
-                    onPressed: () => _start(context, ref, draft)),
+                    onPressed: _start,
+                  ),
               ],
             ),
           ),
@@ -154,42 +228,61 @@ class RoomLobbyScreen extends ConsumerWidget {
   }
 }
 
-class _InvitePanel extends StatelessWidget {
-  const _InvitePanel({required this.draft});
-
-  final RoomDraft draft;
+class _SeatTile extends StatelessWidget {
+  const _SeatTile({required this.seat, required this.index});
+  final RoomPlayerModel? seat;
+  final int index;
 
   @override
   Widget build(BuildContext context) {
+    final color =
+        AppColors.of(LudoColor.values[index % LudoColor.values.length]);
+    final waiting = seat == null || seat!.isWaiting;
+    final name = seat == null
+        ? 'Waiting…'
+        : seat!.isBot
+            ? 'Bot'
+            : (seat!.name ?? 'Player');
+
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.92),
-        borderRadius: BorderRadius.circular(16),
-      ),
+          color: Colors.white.withValues(alpha: 0.92),
+          borderRadius: BorderRadius.circular(16)),
       child: Row(
         children: [
-          Expanded(
-            child: OutlinedButton.icon(
-              onPressed: () => SharePlus.instance.share(
-                ShareParams(
-                  subject: 'Join my Ludo Friends room',
-                  text:
-                      'Join my ${draft.boardName ?? 'Ludo Friends'} room with code ${draft.code}.',
-                ),
-              ),
-              icon: const Icon(Icons.ios_share_rounded),
-              label: const Text('Share Code'),
-            ),
+          CircleAvatar(
+            radius: 20,
+            backgroundColor: color,
+            backgroundImage:
+                (seat?.avatar != null && seat!.avatar!.isNotEmpty && !seat!.isBot)
+                    ? NetworkImage(seat!.avatar!)
+                    : null,
+            child: (seat == null)
+                ? const Icon(Icons.hourglass_empty,
+                    color: Colors.white, size: 18)
+                : seat!.isBot
+                    ? const Icon(Icons.smart_toy, color: Colors.white, size: 18)
+                    : (seat!.avatar == null || seat!.avatar!.isEmpty)
+                        ? Text(
+                            (seat!.name ?? 'P')
+                                .characters
+                                .first
+                                .toUpperCase(),
+                            style: const TextStyle(color: Colors.white))
+                        : null,
           ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: OutlinedButton.icon(
-              onPressed: () => context.push(AppRoutes.friends),
-              icon: const Icon(Icons.group_rounded),
-              label: const Text('Friends'),
+          const SizedBox(width: 12),
+          Expanded(child: Text(name, style: AppTextStyles.body)),
+          if (!waiting)
+            Icon(
+              (seat!.isReady || seat!.isBot)
+                  ? Icons.check_circle
+                  : Icons.timelapse_rounded,
+              color: (seat!.isReady || seat!.isBot)
+                  ? AppColors.success
+                  : AppColors.inkSoft,
             ),
-          ),
         ],
       ),
     );

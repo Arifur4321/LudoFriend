@@ -7,7 +7,7 @@ import '../../../shared/theme/app_colors.dart';
 import '../../../shared/theme/app_text_styles.dart';
 import '../../../shared/widgets/app_background.dart';
 import '../../../shared/widgets/primary_button.dart';
-import '../application/room_draft.dart';
+import '../data/room_repository.dart';
 
 class CreateRoomScreen extends ConsumerStatefulWidget {
   const CreateRoomScreen({super.key});
@@ -21,17 +21,27 @@ class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
   bool _botFill = true;
   bool _isPrivate = true;
   double _timer = 20;
+  bool _busy = false;
 
-  void _create() {
-    final draft = RoomDraft(
-      code: RoomDraft.generateCode(),
-      seats: _seats,
-      botFill: _botFill,
-      turnTimer: _timer.round(),
-      isPrivate: _isPrivate,
+  Future<void> _create() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    final res = await ref.read(roomRepositoryProvider).create(
+          mode: _seats == 2 ? '2p' : '4p',
+          botFill: _botFill,
+          turnTimer: _timer.round(),
+          visibility: _isPrivate ? 'private' : 'public',
+        );
+    if (!mounted) return;
+    setState(() => _busy = false);
+    res.when(
+      ok: (room) {
+        ref.read(activeRoomProvider.notifier).state = room;
+        context.push(AppRoutes.lobby);
+      },
+      err: (f) => ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(f.message))),
     );
-    ref.read(roomDraftProvider.notifier).state = draft;
-    context.push(AppRoutes.lobby);
   }
 
   @override
@@ -108,7 +118,10 @@ class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
                 ),
               ),
               const SizedBox(height: 8),
-              PrimaryButton(label: 'Create Room', onPressed: _create),
+              PrimaryButton(
+                label: _busy ? 'Creating…' : 'Create Room',
+                onPressed: _create,
+              ),
             ],
           ),
         ),
