@@ -31,13 +31,20 @@ class HomeScreen extends ConsumerWidget {
                 padding: const EdgeInsets.fromLTRB(24, 8, 24, 0),
                 child: Row(
                   children: [
-                    _AccountChip(
-                      name: auth?.name ?? 'Guest',
-                      signedIn: auth != null,
-                      onTap: () => context.push(
-                          auth == null ? AppRoutes.login : AppRoutes.profile),
+                    Expanded(
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: _AccountChip(
+                          name: auth?.name ?? 'Guest',
+                          avatarUrl: auth?.avatarUrl,
+                          signedIn: auth != null,
+                          onTap: () => context.push(auth == null
+                              ? AppRoutes.login
+                              : AppRoutes.profile),
+                        ),
+                      ),
                     ),
-                    const Spacer(),
+                    const SizedBox(width: 8),
                     const CoinBalanceChip(compact: true),
                     const SizedBox(width: 8),
                     IconButton(
@@ -128,13 +135,18 @@ class HomeScreen extends ConsumerWidget {
 
 class _AccountChip extends StatelessWidget {
   const _AccountChip(
-      {required this.name, required this.signedIn, required this.onTap});
+      {required this.name,
+      required this.signedIn,
+      required this.onTap,
+      this.avatarUrl});
   final String name;
   final bool signedIn;
   final VoidCallback onTap;
+  final String? avatarUrl;
 
   @override
   Widget build(BuildContext context) {
+    final hasPhoto = avatarUrl != null && avatarUrl!.isNotEmpty;
     return BouncingButton(
       onTap: onTap,
       child: Container(
@@ -146,10 +158,29 @@ class _AccountChip extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            SvgPicture.asset(AppAssets.avatarGuest, width: 28),
+            ClipOval(
+              child: hasPhoto
+                  ? Image.network(
+                      avatarUrl!,
+                      width: 28,
+                      height: 28,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) =>
+                          SvgPicture.asset(AppAssets.avatarGuest, width: 28),
+                    )
+                  : SvgPicture.asset(AppAssets.avatarGuest, width: 28),
+            ),
             const SizedBox(width: 8),
-            Text(name,
-                style: AppTextStyles.label.copyWith(color: Colors.white)),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 150),
+              child: Text(
+                name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                softWrap: false,
+                style: AppTextStyles.label.copyWith(color: Colors.white),
+              ),
+            ),
             const SizedBox(width: 4),
             Icon(signedIn ? Icons.person : Icons.login,
                 color: Colors.white, size: 16),

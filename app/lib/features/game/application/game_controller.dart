@@ -51,6 +51,7 @@ class GameController extends StateNotifier<GameSession> {
       Future.microtask(_initOnline);
     } else {
       _dice = DiceRoller(config.seed);
+      _applyLocalIdentity();
       _scheduleNext();
     }
   }
@@ -66,6 +67,25 @@ class GameController extends StateNotifier<GameSession> {
   bool get _online => config.isOnline && config.matchId != null;
 
   AudioService get _audio => _ref.read(audioServiceProvider);
+
+  /// For a local (offline) game, stamp the signed-in user's name + profile photo
+  /// (or guest flag) onto the first human seat, so the board shows YOU rather
+  /// than "Player 1". Runs regardless of which entry point started the game
+  /// (Enter Boards, matchmaking fallback, private room, rematch, pass & play).
+  void _applyLocalIdentity() {
+    final me = _ref.read(authControllerProvider).valueOrNull;
+    if (me == null) return;
+    final players = state.game.players;
+    final idx = players.indexWhere((p) => p.isHuman);
+    if (idx < 0) return;
+    final updated = [...players];
+    updated[idx] = updated[idx].copyWith(
+      name: me.name,
+      avatarUrl: me.avatarUrl,
+      isGuest: me.isGuest,
+    );
+    state = state.copyWith(game: state.game.copyWith(players: updated));
+  }
 
   @override
   void dispose() {

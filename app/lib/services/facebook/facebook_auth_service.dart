@@ -45,7 +45,10 @@ class FacebookAuthService {
     _ensureEnabled();
     AppLogger.auth('Facebook login started');
     final result = await FacebookAuth.instance.login(
-      permissions: const ['public_profile'],
+      // public_profile → name + photo (default). user_friends → list friends who
+      // also play this app (requires FB App Review for public use; works for
+      // testers/developers in the meantime). Declined perms don't block login.
+      permissions: const ['public_profile', 'user_friends'],
     );
     final token = result.accessToken;
     AppLogger.auth('Facebook LoginResult.status=${result.status.name}');
