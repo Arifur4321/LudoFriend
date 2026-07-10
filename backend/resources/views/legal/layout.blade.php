@@ -140,7 +140,8 @@
             <p>
                 <a href="{{ url('/privacy') }}">Privacy Policy</a> |
                 <a href="{{ url('/terms') }}">Terms</a> |
-                <a href="{{ url('/data-deletion') }}">Data Deletion</a>
+                <a href="{{ url('/data-deletion') }}">Data Deletion</a> |
+                <a href="{{ url('/support') }}">Support</a>
             </p>
         </footer>
     </div>

@@ -21,7 +21,11 @@
         </a>
         <a class="link-card" href="{{ url('/data-deletion') }}">
             <strong>Data Deletion</strong>
-            Request deletion or remove the app from Facebook.
+            Request deletion, or remove the app from Facebook or Google.
+        </a>
+        <a class="link-card" href="{{ url('/support') }}">
+            <strong>Support</strong>
+            Get help with your account, login, or gameplay.
         </a>
     </div>
 @endsection

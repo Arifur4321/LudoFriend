@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/config/app_config.dart';
 import '../../../core/router/app_routes.dart';
 import '../../../shared/theme/app_colors.dart';
 import '../../../shared/theme/app_text_styles.dart';
+import '../../../shared/utils/external_links.dart';
 import '../../../shared/widgets/app_background.dart';
 import '../application/settings_controller.dart';
 
@@ -107,6 +109,33 @@ class SettingsScreen extends ConsumerWidget {
                   title: Text('About', style: AppTextStyles.body),
                   subtitle: Text('Ludo Friends · v1.0.0',
                       style: AppTextStyles.bodyMuted),
+                ),
+              ]),
+              _SectionLabel('Legal'),
+              _Group(children: [
+                ListTile(
+                  leading: const Icon(Icons.privacy_tip_outlined,
+                      color: AppColors.primary),
+                  title: Text('Privacy Policy', style: AppTextStyles.body),
+                  trailing: const Icon(Icons.open_in_new_rounded, size: 18),
+                  onTap: () =>
+                      openExternalUrl(context, AppConfig.privacyPolicyUrl),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.description_outlined,
+                      color: AppColors.primary),
+                  title: Text('Terms of Service', style: AppTextStyles.body),
+                  trailing: const Icon(Icons.open_in_new_rounded, size: 18),
+                  onTap: () => openExternalUrl(context, AppConfig.termsUrl),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.delete_outline_rounded,
+                      color: AppColors.primary),
+                  title: Text('Data & account deletion',
+                      style: AppTextStyles.body),
+                  trailing: const Icon(Icons.open_in_new_rounded, size: 18),
+                  onTap: () =>
+                      openExternalUrl(context, AppConfig.dataDeletionUrl),
                 ),
               ]),
             ],

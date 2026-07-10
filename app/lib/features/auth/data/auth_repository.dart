@@ -120,14 +120,22 @@ class AuthRepository {
     String? serverAuthCode,
   }) async {
     try {
+      AppLogger.auth('Backend POST /auth/google started');
       final res = await _dio.post(ApiEndpoints.google, data: {
         'id_token': idToken,
         if (serverAuthCode != null) 'server_auth_code': serverAuthCode,
       });
+      AppLogger.auth('Backend /auth/google status=${res.statusCode}');
       final user = _userFromResponse(res.data);
       await _persist(user);
       return Ok(user);
     } catch (e) {
+      if (e is DioException) {
+        AppLogger.auth(
+          'Backend /auth/google error status=${e.response?.statusCode}',
+        );
+        AppLogger.auth('Backend /auth/google error body=${e.response?.data}');
+      }
       return Err(DioClient.mapError(e));
     }
   }

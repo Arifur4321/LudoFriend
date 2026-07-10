@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
 import '../../core/config/app_config.dart';
+import '../../core/utils/logger.dart';
 import '../social/social_auth_exception.dart';
 
 class GoogleProfile {
@@ -33,12 +34,19 @@ class GoogleAuthService {
     }
 
     await _ensureInitialized();
+    AppLogger.auth('Google login started');
     try {
       final account = await GoogleSignIn.instance.authenticate();
+      AppLogger.auth('Google account exists=true hasEmail=${account.email.isNotEmpty}');
       final idToken = account.authentication.idToken;
+      // Never log the token itself — only whether it exists and its length.
+      AppLogger.auth('Google idToken exists=${idToken != null && idToken.isNotEmpty}');
+      AppLogger.auth('Google idToken length=${idToken?.length ?? 0}');
       if (idToken == null || idToken.isEmpty) {
         throw const SocialAuthException(
-          'Google did not return an ID token for backend login.',
+          'Google did not return an ID token for backend login. '
+          'Check that GOOGLE_SERVER_CLIENT_ID (the Web OAuth client id) is set '
+          'and that the Android OAuth client (package + SHA-1) exists.',
         );
       }
 
@@ -54,6 +62,7 @@ class GoogleAuthService {
         serverAuthCode: serverAuth?.serverAuthCode,
       );
     } on GoogleSignInException catch (e) {
+      AppLogger.auth('Google sign-in exception code=${e.code.name} desc=${e.description ?? ''}');
       if (e.code == GoogleSignInExceptionCode.canceled) return null;
       if (e.code == GoogleSignInExceptionCode.clientConfigurationError ||
           e.code == GoogleSignInExceptionCode.providerConfigurationError) {

@@ -5,10 +5,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/config/app_config.dart';
 import '../../../core/router/app_routes.dart';
 import '../../../core/utils/logger.dart';
 import '../../../shared/theme/app_colors.dart';
 import '../../../shared/theme/app_text_styles.dart';
+import '../../../shared/utils/external_links.dart';
 import '../../../shared/widgets/app_assets.dart';
 import '../../../shared/widgets/app_background.dart';
 import '../../../shared/widgets/ludo_loader.dart';
@@ -81,7 +83,18 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
   Future<void> _google() async {
     final ok =
         await ref.read(authControllerProvider.notifier).loginWithGoogle();
-    if (ok && mounted) context.go(AppRoutes.home);
+    if (!mounted) return;
+    if (ok) {
+      AppLogger.auth('Navigation after successful Google login: /home');
+      context.go(AppRoutes.home);
+      return;
+    }
+
+    final message = ref.read(authControllerProvider.notifier).errorMessage ??
+        'Google sign-in could not be completed.';
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
   }
 
   @override
@@ -195,6 +208,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                       child: const Text('Create a new account',
                           style: TextStyle(color: Colors.white)),
                     ),
+                    const SizedBox(height: 8),
+                    const _LegalFooter(),
                   ],
                 ),
               ),
@@ -299,6 +314,36 @@ class _SocialButton extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Small consent line under the sign-in buttons linking to the public legal
+/// pages (required for Play / Meta / Google review).
+class _LegalFooter extends StatelessWidget {
+  const _LegalFooter();
+
+  @override
+  Widget build(BuildContext context) {
+    final style = AppTextStyles.label.copyWith(color: Colors.white70);
+    final linkStyle = style.copyWith(
+        color: Colors.white, decoration: TextDecoration.underline);
+    return Wrap(
+      alignment: WrapAlignment.center,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        Text('By continuing you agree to our ', style: style),
+        GestureDetector(
+          onTap: () => openExternalUrl(context, AppConfig.termsUrl),
+          child: Text('Terms', style: linkStyle),
+        ),
+        Text(' and ', style: style),
+        GestureDetector(
+          onTap: () => openExternalUrl(context, AppConfig.privacyPolicyUrl),
+          child: Text('Privacy Policy', style: linkStyle),
+        ),
+        Text('.', style: style),
+      ],
     );
   }
 }

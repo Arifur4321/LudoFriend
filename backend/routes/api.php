@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\AccountController;
 use App\Http\Controllers\Api\AdminController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BoardController;
@@ -51,6 +52,12 @@ Route::prefix('v1')->group(function () {
         // Session
         Route::post('auth/logout', [AuthController::class, 'logout']);
         Route::get('me', [AuthController::class, 'me']);
+
+        // Account deletion request (GDPR / Google Play "Delete account").
+        // Non-destructive: records a pending request for manual/async
+        // processing — see AccountController. Tight rate limit.
+        Route::post('account/delete-request', [AccountController::class, 'deleteRequest'])
+            ->middleware('throttle:6,1');
 
         // Profile (default api throttle)
         Route::middleware('throttle:60,1')->group(function () {

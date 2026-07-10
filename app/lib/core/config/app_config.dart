@@ -86,6 +86,18 @@ abstract class AppConfig {
     return '$root/broadcasting/auth';
   }
 
+  /// Web root of the public legal site (Laravel), derived from the API base by
+  /// stripping the `/api/...` suffix. Prod → `https://db.ludogame.dronescan.pro`.
+  static String get legalBaseUrl {
+    final base = apiBaseUrl;
+    final i = base.indexOf('/api/');
+    return i >= 0 ? base.substring(0, i) : base;
+  }
+
+  static String get privacyPolicyUrl => '$legalBaseUrl/privacy';
+  static String get termsUrl => '$legalBaseUrl/terms';
+  static String get dataDeletionUrl => '$legalBaseUrl/data-deletion';
+
   static String get wsHost {
     if (_wsHostOverride.isNotEmpty) return _wsHostOverride;
     switch (environment) {

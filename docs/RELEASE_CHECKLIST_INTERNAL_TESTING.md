@@ -1,282 +1,305 @@
-# Go‑Live Runbook — Backend (VPS) + Play Store internal testing
+# Ludo Friends — Play Store Internal Testing Release Checklist
 
-This is the exact, ordered list of **manual** actions to ship the current
-`claude-fb` build (live board, in‑game chat/emoji, Facebook friends + presence,
-private rooms, **random matchmaking**, online multiplayer) so internal testers
-can install it and play together.
-
-Two things must both be true for online play to work:
-1. The **backend** is deployed and migrated on your VPS.
-2. Three long‑running processes are up: **Reverb** (WebSockets), a **queue
-   worker**, and the **scheduler** (cron). Matchmaking bot‑fill and every
-   realtime update depend on the last two — do not skip them.
-
-Assumed hosts (change if yours differ):
-- REST API: `https://db.ludogame.dronescan.pro`  → app base `…/api/v1`
-- WebSocket: `wss://ws.ludogame.dronescan.pro` (nginx TLS → Reverb on `127.0.0.1:8080`)
-- Facebook App ID already wired natively: `2582636912564874`
+Branch: **`claude-fb`** (current multiplayer / friends / matchmaking build).
+Rollback branch: **`claude-3d`**.
+Android package: **`com.arifurrahman.ludofriends`**.
+Production API: **https://db.ludogame.dronescan.pro/api/v1**.
+Legal site: **https://db.ludogame.dronescan.pro**
 
 ---
 
-## PART A — Backend on the VPS
+## 0. Production values (single source of truth)
 
-```bash
-# 1. Get the code onto the server (first time: clone; after: pull)
-cd /var/www/ludofriend        # your app path
-git fetch origin
-git checkout claude-fb
-git pull origin claude-fb
+| Key | Value |
+|-----|-------|
+| Reverb server port | **8081** (not 8080) |
+| `REVERB_HOST` | `ws.ludogame.dronescan.pro` |
+| `REVERB_APP_KEY` | `ludo-prod-key-2026` |
+| Flutter `WS_HOST` | `ws.ludogame.dronescan.pro` |
+| Flutter `WS_PORT` | `443` |
+| Flutter `WS_TLS` | `true` |
+| Flutter `WS_KEY` | `ludo-prod-key-2026` |
 
-# 2. PHP deps (production)
-cd backend
-composer install --no-dev --optimize-autoloader
+Server `.env` (Reverb section) must read:
 
-# 3. Environment (first deploy only: create + key)
-cp .env.example .env          # skip if .env already exists
-php artisan key:generate      # skip if APP_KEY already set
 ```
-
-Edit `backend/.env` — the values that matter for this release:
-
-```dotenv
-APP_ENV=production
-APP_DEBUG=false
-APP_URL=https://db.ludogame.dronescan.pro
-
-# --- Database (your MySQL) ---
-DB_CONNECTION=mysql
-DB_HOST=127.0.0.1
-DB_DATABASE=ludofriend
-DB_USERNAME=xxxx
-DB_PASSWORD=xxxx
-
-# --- Redis (presence, cache, queue) ---
-REDIS_CLIENT=phpredis          # or predis if the ext isn't installed
-REDIS_HOST=127.0.0.1
-REDIS_PORT=6379
-CACHE_STORE=redis              # friends "online" flag lives in cache
-SESSION_DRIVER=redis
-QUEUE_CONNECTION=redis         # broadcasts + jobs go through the worker
-
-# --- Broadcasting / Reverb (WebSockets) ---
-BROADCAST_CONNECTION=reverb
-REVERB_APP_ID=ludofriends
-REVERB_APP_KEY=CHOOSE_A_PUBLIC_KEY      # ships in the app as WS_KEY (safe to expose)
-REVERB_APP_SECRET=CHOOSE_A_LONG_SECRET  # server-only, keep private
-REVERB_HOST=ws.ludogame.dronescan.pro   # public hostname the app connects to
+REVERB_HOST=ws.ludogame.dronescan.pro
+REVERB_APP_KEY=ludo-prod-key-2026
 REVERB_PORT=443
 REVERB_SCHEME=https
-REVERB_SERVER_HOST=127.0.0.1            # the socket Reverb actually listens on
-REVERB_SERVER_PORT=8080
-REVERB_SCALING_ENABLED=false            # set true only when you run >1 Reverb node
+REVERB_SERVER_HOST=127.0.0.1
+REVERB_SERVER_PORT=8081
 ```
 
-```bash
-# 4. Migrate (creates matchmaking_tickets, match_messages, friend_links, etc.)
-php artisan migrate --force
+> The client connects to `wss://ws.ludogame.dronescan.pro:443`; Nginx terminates
+> TLS and proxies to the local Reverb process on **8081**.
 
-# 5. Cache config/routes for speed (re-run after every .env change)
+---
+
+## 1. Backend deploy (VPS)
+
+```bash
+ssh arif@87.106.236.129
+cd /var/www/ludofriends
+git fetch origin
+git switch claude-fb
+git pull --ff-only origin claude-fb
+cd backend
+composer install --no-dev --optimize-autoloader
+php artisan migrate --force
+php artisan optimize:clear
 php artisan config:cache
 php artisan route:cache
 php artisan event:cache
+sudo supervisorctl restart ludo-queue:* ludo-reverb
+sudo systemctl reload nginx
 ```
 
-> After **any** later `.env` edit, re-run `php artisan config:cache` and restart
-> the Reverb + queue services, or the change won't be picked up.
+`php artisan migrate --force` will apply the new
+`create_account_deletion_requests` migration (additive; safe).
+
+### After editing the server `.env` (e.g. adding Google keys)
+
+```bash
+php artisan optimize:clear
+php artisan config:cache
+php artisan route:cache
+php artisan event:cache
+sudo supervisorctl restart ludo-queue:* ludo-reverb
+```
+
+### Required `.env` additions for Google Sign-In
+
+```
+GOOGLE_LOGIN_ENABLED=true
+GOOGLE_CLIENT_ID_WEB=PASTE_WEB_CLIENT_ID
+GOOGLE_CLIENT_ID_ANDROID=PASTE_ANDROID_CLIENT_ID
+GOOGLE_CLIENT_ID_IOS=
+```
+
+Facebook (already configured, verify present):
+
+```
+FACEBOOK_LOGIN_ENABLED=true
+FACEBOOK_APP_ID=2582636912564874
+FACEBOOK_APP_SECRET=***set on server only***
+FACEBOOK_GRAPH_VERSION=v19.0
+```
 
 ---
 
-## PART B — Reverb WebSocket server + nginx TLS
+## 2. Release signing — REQUIRED before building the AAB
 
-Reverb listens on `127.0.0.1:8080`; nginx terminates TLS and forwards
-`wss://ws.ludogame.dronescan.pro` to it. Add this server block (and issue a cert
-for that hostname with certbot):
+Google Play **rejects debug-signed** uploads. `android/app/build.gradle.kts`
+currently signs release with the debug key (fine for `flutter run`, not for
+Play). Create an upload keystore once:
 
-```nginx
-server {
-    listen 443 ssl http2;
-    server_name ws.ludogame.dronescan.pro;
+```bash
+keytool -genkey -v -keystore upload-keystore.jks -keyalg RSA -keysize 2048 \
+  -validity 10000 -alias upload
+```
 
-    ssl_certificate     /etc/letsencrypt/live/ws.ludogame.dronescan.pro/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/ws.ludogame.dronescan.pro/privkey.pem;
+Create `app/android/key.properties` (DO NOT COMMIT — add to .gitignore):
 
-    location / {
-        proxy_pass http://127.0.0.1:8080;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "Upgrade";
-        proxy_set_header Host $host;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_read_timeout 3600s;   # keep long-lived sockets open
+```
+storePassword=********
+keyPassword=********
+keyAlias=upload
+storeFile=/absolute/path/to/upload-keystore.jks
+```
+
+Wire it in `app/android/app/build.gradle.kts` (release `signingConfig`):
+
+```kotlin
+import java.util.Properties
+import java.io.FileInputStream
+
+val keystoreProperties = Properties()
+val keystorePropertiesFile = rootProject.file("key.properties")
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(FileInputStream(keystorePropertiesFile))
+}
+
+android {
+    signingConfigs {
+        create("release") {
+            if (keystorePropertiesFile.exists()) {
+                keyAlias = keystoreProperties["keyAlias"] as String
+                keyPassword = keystoreProperties["keyPassword"] as String
+                storeFile = file(keystoreProperties["storeFile"] as String)
+                storePassword = keystoreProperties["storePassword"] as String
+            }
+        }
+    }
+    buildTypes {
+        release {
+            signingConfig = if (keystorePropertiesFile.exists())
+                signingConfigs.getByName("release")
+            else signingConfigs.getByName("debug")
+        }
     }
 }
 ```
 
-```bash
-sudo certbot --nginx -d ws.ludogame.dronescan.pro
-sudo nginx -t && sudo systemctl reload nginx
-```
+Keep the keystore + passwords safe and backed up. Losing the upload key means
+you must request an upload-key reset from Google (Play App Signing keeps signing
+end users, so the app can still update).
+
+> Bump `version:` in `app/pubspec.yaml` for every Play upload
+> (`1.0.0+1` → `1.0.0+2` → …). Play requires a unique `versionCode`.
 
 ---
 
-## PART C — Keep 3 processes alive (systemd)
-
-Create these units, then `enable --now` each. **All three are required.**
-
-`/etc/systemd/system/reverb.service`
-
-```ini
-[Unit]
-Description=Laravel Reverb
-After=network.target
-[Service]
-User=www-data
-WorkingDirectory=/var/www/ludofriend/backend
-ExecStart=/usr/bin/php artisan reverb:start --host=127.0.0.1 --port=8080
-Restart=always
-[Install]
-WantedBy=multi-user.target
-```
-
-`/etc/systemd/system/ludo-queue.service`  (delivers broadcasts + jobs)
-
-```ini
-[Unit]
-Description=Ludo queue worker
-After=network.target
-[Service]
-User=www-data
-WorkingDirectory=/var/www/ludofriend/backend
-ExecStart=/usr/bin/php artisan queue:work --queue=default --sleep=1 --tries=3 --timeout=90
-Restart=always
-[Install]
-WantedBy=multi-user.target
-```
-
-`/etc/systemd/system/ludo-scheduler.service` + timer — **this is what runs the
-matchmaking bot‑fill sweep and stale‑room cleanup every minute.** Simplest is a
-cron line instead:
+## 3. Flutter debug run (USB device)
 
 ```bash
-sudo crontab -u www-data -e
-# add:
-* * * * * cd /var/www/ludofriend/backend && php artisan schedule:run >> /dev/null 2>&1
-```
-
-```bash
-sudo systemctl daemon-reload
-sudo systemctl enable --now reverb.service ludo-queue.service
-# restart both after every deploy:
-sudo systemctl restart reverb.service ludo-queue.service php8.3-fpm
-```
-
-Quick server‑side check:
-
-```bash
-php artisan about | grep -i broadcast     # driver = reverb
-redis-cli ping                            # PONG
-sudo ss -ltnp | grep 8080                 # reverb listening
-```
-
----
-
-## PART D — Flutter build for Play Store internal testing
-
-Build an **app bundle** (`.aab`, required by Play) with your real endpoints.
-`WS_KEY` must equal the backend `REVERB_APP_KEY` from Part A.
-
-```bash
-cd app
+cd C:\Arifur-File\ROEL\ludofriend\LudoFriend\app
 flutter clean
 flutter pub get
-
-flutter build appbundle --release \
-  --dart-define=APP_ENV=prod \
-  --dart-define=API_BASE_URL=https://db.ludogame.dronescan.pro/api/v1 \
-  --dart-define=WS_HOST=ws.ludogame.dronescan.pro \
-  --dart-define=WS_PORT=443 \
-  --dart-define=WS_TLS=true \
-  --dart-define=WS_KEY=CHOOSE_A_PUBLIC_KEY \
-  --dart-define=FACEBOOK_ENABLED=true
+flutter run --dart-define=APP_ENV=prod --dart-define=API_BASE_URL=https://db.ludogame.dronescan.pro/api/v1 --dart-define=WS_HOST=ws.ludogame.dronescan.pro --dart-define=WS_PORT=443 --dart-define=WS_TLS=true --dart-define=WS_KEY=ludo-prod-key-2026 --dart-define=FACEBOOK_ENABLED=true --dart-define=GOOGLE_ENABLED=true
 ```
 
-Output: `app/build/app/outputs/bundle/release/app-release.aab`.
+> ⚠ **Google Sign-In also needs the Web client id** passed as
+> `GOOGLE_SERVER_CLIENT_ID`, or Android will not return an ID token for the
+> backend and login will fail with "Google did not return an ID token".
+> Add this define to both the run and build commands:
+>
+> `--dart-define=GOOGLE_SERVER_CLIENT_ID=PASTE_WEB_CLIENT_ID`
+>
+> (iOS later: `--dart-define=GOOGLE_IOS_CLIENT_ID=PASTE_IOS_CLIENT_ID`.)
+> `GOOGLE_CLIENT_ID_WEB` on the server and `GOOGLE_SERVER_CLIENT_ID` in the app
+> must be the **same Web OAuth client id** (that's the token audience the
+> backend verifies).
 
-**Release signing** (once): create a keystore and an `android/key.properties`, and
-make sure `android/app/build.gradle` reads it for the `release` signingConfig, or
-Play will reject an unsigned/debug‑signed bundle.
+Full command with Google working:
 
 ```bash
-keytool -genkey -v -keystore ~/ludofriend-release.jks \
-  -keyalg RSA -keysize 2048 -validity 10000 -alias ludofriend
+flutter run --dart-define=APP_ENV=prod --dart-define=API_BASE_URL=https://db.ludogame.dronescan.pro/api/v1 --dart-define=WS_HOST=ws.ludogame.dronescan.pro --dart-define=WS_PORT=443 --dart-define=WS_TLS=true --dart-define=WS_KEY=ludo-prod-key-2026 --dart-define=FACEBOOK_ENABLED=true --dart-define=GOOGLE_ENABLED=true --dart-define=GOOGLE_SERVER_CLIENT_ID=PASTE_WEB_CLIENT_ID
 ```
 
-Then in Play Console:
-1. Create the app (or open it) → **Testing → Internal testing → Create new release**.
-2. Upload the `.aab`. Fill release notes.
-3. **Testers** tab → create an email list → add your testers' Google account
-   emails → **Save**, then **Review release → Start rollout to Internal testing**.
-4. Copy the **Join on the web** opt‑in link and send it to each tester. They must
-   accept, then install from Play. (Internal testing is live in minutes — no
-   review wait.)
+---
 
-> First upload also requires the one‑time forms: App content (privacy policy URL,
-> data safety, content rating, target audience, ads declaration). Internal
-> testing can roll out before these are all done, but Play nags until complete.
+## 4. Flutter Play Store AAB build
+
+```bash
+flutter clean
+flutter pub get
+flutter build appbundle --release --dart-define=APP_ENV=prod --dart-define=API_BASE_URL=https://db.ludogame.dronescan.pro/api/v1 --dart-define=WS_HOST=ws.ludogame.dronescan.pro --dart-define=WS_PORT=443 --dart-define=WS_TLS=true --dart-define=WS_KEY=ludo-prod-key-2026 --dart-define=FACEBOOK_ENABLED=true --dart-define=GOOGLE_ENABLED=true --dart-define=GOOGLE_SERVER_CLIENT_ID=PASTE_WEB_CLIENT_ID
+```
+
+AAB output:
+
+```
+app/build/app/outputs/bundle/release/app-release.aab
+```
 
 ---
 
-## PART E — Facebook app so testers can log in
+## 5. On-device testing checklist
 
-The native FB App ID / client token are already in the project. For **release**
-builds two things commonly bite:
-
-1. **Roles or Live mode.** While the FB app is in *Development* mode, only people
-   with a role can log in. Either add each tester under **App → Roles → Roles**
-   (Testers), **or** switch the app to **Live** (public_profile only needs Basic
-   Access — no App Review). Live mode needs a Privacy Policy URL and the basic
-   settings filled in.
-2. **Release key hash.** Facebook rejects logins whose signing hash it doesn't
-   know. Because Play re‑signs your app, use Google's signing certificate:
-   - Play Console → your app → **Test and release → App integrity → App signing**
-     → copy the **SHA‑1** of the *App signing key certificate*.
-   - Convert to a Facebook key hash and paste it into **FB app → Settings →
-     Basic → Android → Key hashes**:
-     ```bash
-     echo -n <SHA1_HEX_NO_COLONS> | xxd -r -p | openssl base64
-     ```
-     (Also add your local debug hash so `flutter run` keeps working.)
-
-Confirm under **FB → Settings → Basic → Android**: package name
-`com.arifurrahman.ludofriends`, default activity
-`com.arifurrahman.ludofriends.MainActivity`, and Facebook Login is enabled.
-
----
-
-## PART F — Smoke test with 2 devices/accounts
-
-1. Both testers install from the internal‑testing link and open the app.
-2. Both **log in with Facebook** — each should see their **photo + name** (guests
-   see an SVG avatar).
-3. Friends: on device A, **Online Match → 4 Players** on both; they should get
-   matched together (or bot‑filled after ~30 s), land in the lobby, host taps
-   **Start**, and both drop into the same board.
-4. Private room: A creates a room, shares the code, B joins by code → both ready →
-   start. After the game they should now see each other saved under **Friends**
-   next time (no code needed).
-5. Online invite: with a saved/online friend, tap **Play** on their friend tile;
-   the other device shows a **"Play with {name}?"** prompt → Join → same board.
-6. In‑game: dice sits next to the active player, chat + emoji work, settings
-   (sound/music/vibration) apply.
-
-If realtime doesn't update (lobby stuck, moves not syncing): the queue worker or
-Reverb is almost always the cause — check `systemctl status ludo-queue reverb`
-and that `WS_KEY` (app) exactly equals `REVERB_APP_KEY` (server).
+- [ ] Facebook login
+- [ ] Google login (shows account picker → returns to Home)
+- [ ] Guest login
+- [ ] Home screen — no overflow
+- [ ] Board shows player name + photo
+- [ ] Create private room
+- [ ] Join room by code
+- [ ] Start shared match
+- [ ] Dice / move sync between two devices
+- [ ] Chat / emoji sync
+- [ ] Friends list persists after a match
+- [ ] Invite a friend from the friends list
+- [ ] Invited user sees "Play with {name}?"
+- [ ] Random matchmaking
+- [ ] Bot fallback when no opponents
+- [ ] Leaderboard / profile basics
+- [ ] No 404 on `/friends`, `/rooms`, `/matchmaking` routes
+- [ ] Reverb running (WS connects, live updates)
+- [ ] Queue workers running
+- [ ] Scheduler running
+- [ ] Settings → Legal → Privacy / Terms / Data deletion open in browser
 
 ---
 
-### One‑line reminder of the "why"
-- **No queue worker** → broadcasts never leave the server → lobby/board don't update.
-- **No scheduler cron** → solo matchmaking never bot‑fills (players wait forever; the in‑app "Play bots instead" button is the only escape).
-- **WS_KEY ≠ REVERB_APP_KEY** → the socket connects but every private channel auth fails.
+## 6. Play Console checklist
+
+- [ ] Create an **Internal testing** release
+- [ ] Upload `app-release.aab`
+- [ ] Add tester Google/Gmail account addresses
+- [ ] Copy the opt-in link and share with testers
+- [ ] Complete the **Data safety** section accurately (see mapping below)
+- [ ] Add privacy policy URL: `https://db.ludogame.dronescan.pro/privacy`
+- [ ] App category: **Game / Board**
+- [ ] Content rating questionnaire
+- [ ] Store listing: `docs/store-assets/play_icon_512.png`,
+      `docs/store-assets/feature_graphic_1024x500.png`, screenshots
+- [ ] Contact email: `hatbazar627@gmail.com`
+- [ ] App integrity → App signing → copy the **SHA-1**
+- [ ] Add that **Play App Signing SHA-1** to the Google Cloud **Android OAuth
+      client** (required for Google Sign-In on Play builds)
+- [ ] Convert the Play App Signing SHA-1 to a **Facebook key hash** and add it in
+      the Meta dashboard
+- [ ] Keep the **debug** key hashes too (for USB testing)
+
+**Data safety mapping** (what the app actually collects):
+Name; Email (optional, via Google); User IDs (Google/Facebook profile id);
+Photos (profile avatar URL); App activity (gameplay, friends, matches);
+App info & performance (crash/diagnostics). Data is **encrypted in transit
+(HTTPS)** and users can **request deletion** (in-app + web). Not collected:
+location, contacts, mic/camera, Gmail/Drive.
+
+---
+
+## 7. Meta / Facebook checklist
+
+- [ ] App mode: **Development** (add testers in App Roles) or **Live**
+- [ ] Android platform → package `com.arifurrahman.ludofriends`
+- [ ] Class: `com.arifurrahman.ludofriends.MainActivity`
+- [ ] Key hashes: Windows debug, Mac debug (if used), and **Play App Signing** hash
+- [ ] Privacy URL: `https://db.ludogame.dronescan.pro/privacy`
+- [ ] Terms URL: `https://db.ludogame.dronescan.pro/terms`
+- [ ] User Data Deletion URL: `https://db.ludogame.dronescan.pro/data-deletion`
+- [ ] Login permissions: **public_profile only**
+- [ ] Do **not** request `user_friends` until approved by Meta App Review
+
+Generate a Facebook key hash from a keystore SHA-1 (or directly):
+
+```bash
+keytool -exportcert -alias upload -keystore upload-keystore.jks \
+  | openssl sha1 -binary | openssl base64
+```
+
+---
+
+## 8. Google (Cloud Console) checklist
+
+- [ ] Project created/selected for Ludo Friends
+- [ ] OAuth consent screen configured (App name **Ludo Friends**; support +
+      developer email `hatbazar627@gmail.com`)
+- [ ] Privacy URL `https://db.ludogame.dronescan.pro/privacy` + Terms URL
+      `https://db.ludogame.dronescan.pro/terms` added
+- [ ] App domain: `db.ludogame.dronescan.pro`
+- [ ] Test users added if the OAuth app is in **Testing** mode
+- [ ] **Android OAuth client**: package `com.arifurrahman.ludofriends` +
+      SHA-1 (Windows debug, Mac debug if used, **Play App Signing**)
+- [ ] **Web OAuth client** created (used as the token audience)
+- [ ] `GOOGLE_CLIENT_ID_WEB` + `GOOGLE_CLIENT_ID_ANDROID` in server `.env`
+- [ ] Server config cache rebuilt (`php artisan config:cache`)
+- [ ] App built with `GOOGLE_SERVER_CLIENT_ID=<Web client id>`
+- [ ] Google login tested from USB debug **and** from the Play internal build
+- [ ] No Gmail API enabled (sign-in only — no mailbox/Drive/Contacts scopes)
+
+---
+
+## 9. Common failures → fixes
+
+| Symptom | Cause / fix |
+|---------|-------------|
+| `401` on a protected route | Expected when unauthenticated — not a bug |
+| `404` on `/friends`, `/rooms`, `/matchmaking` | Branch not deployed — deploy `claude-fb` |
+| WebSocket won't connect | `WS_HOST`/`WS_KEY`/Reverb port (8081)/Nginx mismatch |
+| FB "invalid key hash" | Add debug + Play App Signing key hashes in Meta |
+| FB "invalid scope" | `user_friends` requested — keep `public_profile` only |
+| Google `ApiException: 10` | Wrong package/SHA-1/OAuth client, or missing `GOOGLE_SERVER_CLIENT_ID` |
+| Google "issued for a different app" | Web client id ≠ `GOOGLE_CLIENT_ID_WEB` on server |
+| Play rejects AAB "signed in debug mode" | Set up the release/upload keystore (section 2) |

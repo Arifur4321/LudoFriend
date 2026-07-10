@@ -12,6 +12,7 @@ class LegalPagesTest extends TestCase
         $this->get('/privacy')->assertOk()->assertSee('Privacy Policy');
         $this->get('/terms')->assertOk()->assertSee('Terms');
         $this->get('/data-deletion')->assertOk()->assertSee('Data Deletion');
+        $this->get('/support')->assertOk()->assertSee('Support');
     }
 
     public function test_legal_pages_do_not_require_authentication(): void
@@ -19,5 +20,19 @@ class LegalPagesTest extends TestCase
         $this->get('/privacy')->assertOk();
         $this->get('/terms')->assertOk();
         $this->get('/data-deletion')->assertOk();
+        $this->get('/support')->assertOk();
+    }
+
+    public function test_privacy_and_deletion_cover_google_and_facebook(): void
+    {
+        $this->get('/privacy')->assertOk()
+            ->assertSee('Google')
+            ->assertSee('Facebook')
+            ->assertSee('hatbazar627@gmail.com');
+
+        $this->get('/data-deletion')->assertOk()
+            ->assertSee('Google')
+            ->assertSee('Facebook')
+            ->assertSee('https://db.ludogame.dronescan.pro/data-deletion');
     }
 }
