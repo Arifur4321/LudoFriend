@@ -135,6 +135,11 @@ class AuthController extends Controller
 
             if ($social) {
                 $user = $social->user;
+
+                // Keep the linked social row's stored photo current.
+                if (! empty($profile['avatar'])) {
+                    $social->update(['avatar_url' => $profile['avatar']]);
+                }
             } else {
                 // Link to an existing email account if one exists, else create.
                 $user = ($profile['email'] ? User::where('email', $profile['email'])->first() : null)
@@ -154,7 +159,18 @@ class AuthController extends Controller
                 ]);
             }
 
+            // Refresh the account photo so returning users pick up the current
+            // (and now stable) Facebook picture on the profile screen.
+            if (! empty($profile['avatar']) && $user->avatar !== $profile['avatar']) {
+                $user->update(['avatar' => $profile['avatar']]);
+            }
+
             $this->ensureProfile($user, $profile['name'] ?? null, $profile['avatar'] ?? null);
+
+            // Mirror the latest photo onto the player profile too.
+            if (! empty($profile['avatar'])) {
+                $user->profile()->update(['avatar' => $profile['avatar']]);
+            }
 
             return $user;
         });

@@ -29,10 +29,12 @@ class ProfileScreen extends ConsumerWidget {
             children: [
               Column(
                 children: [
-                  SvgPicture.asset(AppAssets.avatarGuest, width: 96),
+                  _ProfileAvatar(
+                    photoUrl: signedIn ? user?.avatarUrl : null,
+                  ),
                   const SizedBox(height: 12),
                   Text(user?.name ?? 'Guest', style: AppTextStyles.display),
-                  Text(signedIn ? (user.email ?? '') : 'Guest player',
+                  Text(signedIn ? (user?.email ?? '') : 'Guest player',
                       style:
                           AppTextStyles.body.copyWith(color: Colors.white70)),
                 ],
@@ -93,6 +95,51 @@ class ProfileScreen extends ConsumerWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Circular profile avatar.
+///
+/// Shows the signed-in user's real Facebook / Google photo when a [photoUrl] is
+/// available, falling back to the bundled guest face while the image loads, on
+/// any network error, or for guests / accounts without a photo. It never throws
+/// on a bad or slow URL, so the profile header always renders.
+class _ProfileAvatar extends StatelessWidget {
+  const _ProfileAvatar({this.photoUrl, this.size = 96});
+
+  final String? photoUrl;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    final url = photoUrl;
+    final fallback =
+        SvgPicture.asset(AppAssets.avatarGuest, width: size, height: size);
+
+    final Widget inner = (url != null && url.isNotEmpty)
+        ? Image.network(
+            url,
+            width: size,
+            height: size,
+            fit: BoxFit.cover,
+            gaplessPlayback: true,
+            loadingBuilder: (ctx, child, progress) =>
+                progress == null ? child : fallback,
+            errorBuilder: (ctx, _, __) => fallback,
+          )
+        : fallback;
+
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: Colors.white.withValues(alpha: 0.15),
+        border:
+            Border.all(color: Colors.white.withValues(alpha: 0.55), width: 2),
+      ),
+      child: ClipOval(child: inner),
     );
   }
 }

@@ -94,8 +94,8 @@ class _StoreScreenState extends ConsumerState<StoreScreen> {
                   crossAxisCount: 2,
                   mainAxisSpacing: 14,
                   crossAxisSpacing: 14,
-                  childAspectRatio: 0.82,
-                  children: packs.map((p) => _PackCard(pack: p, onTap: () => _buy(p))).toList(),
+                  childAspectRatio: 0.78,
+                  children: packs.map((p) => PackCard(pack: p, onTap: () => _buy(p))).toList(),
                 ),
                 if (_busy)
                   const Positioned.fill(
@@ -113,8 +113,9 @@ class _StoreScreenState extends ConsumerState<StoreScreen> {
   }
 }
 
-class _PackCard extends StatelessWidget {
-  const _PackCard({required this.pack, required this.onTap});
+@visibleForTesting
+class PackCard extends StatelessWidget {
+  const PackCard({super.key, required this.pack, required this.onTap});
   final CoinPack pack;
   final VoidCallback onTap;
 
@@ -124,6 +125,8 @@ class _PackCard extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
+        // Clip so the coloured ribbon follows the card's rounded corners.
+        clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(20),
@@ -133,32 +136,47 @@ class _PackCard extends StatelessWidget {
         ),
         child: Column(
           children: [
-            if (highlight)
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(vertical: 5),
-                decoration: const BoxDecoration(
-                  color: AppColors.accent,
-                  borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
-                ),
-                child: Text(pack.bestValue ? 'BEST VALUE' : 'POPULAR',
-                    textAlign: TextAlign.center,
-                    style: AppTextStyles.label.copyWith(
-                        color: AppColors.ink, fontSize: 11, fontWeight: FontWeight.w800)),
-              )
-            else
-              const SizedBox(height: 8),
-            const SizedBox(height: 8),
-            const CoinIcon(size: 40),
-            const SizedBox(height: 8),
+            // Fixed-height ribbon band: highlighted cards show POPULAR / BEST
+            // VALUE, plain cards reserve the same height. Keeping the band a
+            // constant height means every grid cell needs the same vertical
+            // space, which removes the bottom overflow the taller ribbon used
+            // to cause on the highlighted cards.
+            SizedBox(
+              height: 22,
+              width: double.infinity,
+              child: highlight
+                  ? ColoredBox(
+                      color: AppColors.accent,
+                      child: Center(
+                        child: Text(
+                          pack.bestValue ? 'BEST VALUE' : 'POPULAR',
+                          textAlign: TextAlign.center,
+                          style: AppTextStyles.label.copyWith(
+                              color: AppColors.ink,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800),
+                        ),
+                      ),
+                    )
+                  : null,
+            ),
+            const SizedBox(height: 6),
+            const CoinIcon(size: 38),
+            const SizedBox(height: 6),
             Text(formatCoins(pack.totalCoins),
                 style: AppTextStyles.title.copyWith(color: AppColors.ink)),
             if (pack.bonus > 0)
-              Text('incl. +${formatCoins(pack.bonus)} bonus',
-                  style: AppTextStyles.bodyMuted.copyWith(fontSize: 11)),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 6),
+                child: Text('incl. +${formatCoins(pack.bonus)} bonus',
+                    textAlign: TextAlign.center,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTextStyles.bodyMuted.copyWith(fontSize: 11)),
+              ),
             const Spacer(),
             Container(
-              margin: const EdgeInsets.all(12),
+              margin: const EdgeInsets.all(10),
               width: double.infinity,
               padding: const EdgeInsets.symmetric(vertical: 10),
               alignment: Alignment.center,

@@ -47,13 +47,37 @@ class FacebookService
         }
 
         $data = $response->json();
+        $fbId = (string) ($data['id'] ?? '');
 
         return [
-            'id' => (string) ($data['id'] ?? ''),
+            'id' => $fbId,
             'name' => $data['name'] ?? null,
             'email' => $data['email'] ?? null,
-            'avatar' => data_get($data, 'picture.data.url'),
+            'avatar' => $this->pictureUrl($fbId, $data),
         ];
+    }
+
+    /**
+     * Build a stable, tokenless Graph picture URL for a Facebook user.
+     *
+     * The inline `picture.data.url` is a short-lived CDN ("lookaside") link that
+     * expires and can exceed our 255-char avatar column, so we instead store the
+     * canonical `graph.facebook.com/{id}/picture` redirect: it never expires,
+     * needs no access token, and always resolves to the user's current photo.
+     * Returns null when the account only has the default silhouette, so the app
+     * can fall back to its own nicer placeholder avatar.
+     */
+    private function pictureUrl(string $fbId, array $data): ?string
+    {
+        if ($fbId === '') {
+            return null;
+        }
+
+        if ((bool) data_get($data, 'picture.data.is_silhouette', false) === true) {
+            return null;
+        }
+
+        return "{$this->graphUrl}/{$fbId}/picture?type=large&width=256&height=256";
     }
 
     /**

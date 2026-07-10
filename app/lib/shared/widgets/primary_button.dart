@@ -43,28 +43,41 @@ class PrimaryButton extends StatelessWidget {
             ),
           ],
         ),
-        child: Row(
-          mainAxisSize: expand ? MainAxisSize.max : MainAxisSize.min,
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            if (loading)
-              const SizedBox(
-                width: 22,
-                height: 22,
-                child: CircularProgressIndicator(
-                    strokeWidth: 2.4, color: Colors.white),
-              )
-            else ...[
-              if (leading != null) ...[leading!, const SizedBox(width: 10)],
-              if (icon != null) ...[
-                Icon(icon, color: Colors.white, size: 22),
-                const SizedBox(width: 10),
-              ],
-              Text(label, style: AppTextStyles.button),
-            ],
-          ],
-        ),
+        child: _content(),
       ),
     );
+  }
+
+  /// Button content. The icon + label are wrapped in a [FittedBox] so that when
+  /// the button is narrower than its natural width (e.g. two half-width buttons
+  /// sharing a Row on the wallet screen) the content scales down a hair instead
+  /// of throwing a right-edge RenderFlex overflow.
+  Widget _content() {
+    if (loading) {
+      const spinner = SizedBox(
+        width: 22,
+        height: 22,
+        child:
+            CircularProgressIndicator(strokeWidth: 2.4, color: Colors.white),
+      );
+      return expand ? const Center(child: spinner) : spinner;
+    }
+
+    final row = Row(
+      mainAxisSize: MainAxisSize.min,
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        if (leading != null) ...[leading!, const SizedBox(width: 10)],
+        if (icon != null) ...[
+          Icon(icon, color: Colors.white, size: 22),
+          const SizedBox(width: 10),
+        ],
+        Text(label,
+            style: AppTextStyles.button, maxLines: 1, softWrap: false),
+      ],
+    );
+
+    final fitted = FittedBox(fit: BoxFit.scaleDown, child: row);
+    return expand ? Center(child: fitted) : fitted;
   }
 }
