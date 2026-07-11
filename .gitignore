@@ -33,3 +33,7 @@ backend/.phpunit.result.cache
 
 # Claude Cowork sync scratch
 .claude_tmp/
+
+# Claude session temp artifacts
+_to_delete/
+*.tgz

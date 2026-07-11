@@ -33,9 +33,11 @@ class _FriendsScreenState extends ConsumerState<FriendsScreen> {
   void initState() {
     super.initState();
     _refresh();
-    // Heartbeat so others see us online, and refresh the list periodically.
+    // Heartbeat so others see us online, and refresh the list periodically so
+    // friends who come online while this screen is open light up live.
     _presence = Timer.periodic(const Duration(seconds: 25), (_) {
       ref.read(friendsRepositoryProvider).presencePing();
+      _refresh();
     });
     ref.read(friendsRepositoryProvider).presencePing();
   }

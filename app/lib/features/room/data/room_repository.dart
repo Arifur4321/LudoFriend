@@ -53,6 +53,18 @@ class RoomRepository {
     }
   }
 
+  /// Best-effort preview of a room by code (does not join). Used by the Join
+  /// Private Room screen to confirm the host/board before committing. Safe to
+  /// fail: the caller can still join blindly if this returns an error.
+  Future<Result<RoomPreview>> lookup(String code) async {
+    try {
+      final res = await _dio.get(ApiEndpoints.roomLookup(code));
+      return Ok(RoomPreview.fromJson(_data(res.data)));
+    } catch (e) {
+      return Err(DioClient.mapError(e));
+    }
+  }
+
   Future<Result<RoomModel>> show(int roomId) async {
     try {
       final res = await _dio.get(ApiEndpoints.roomById(roomId));

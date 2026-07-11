@@ -28,6 +28,7 @@ abstract class ApiEndpoints {
   // Rooms — backend binds {room} by id; join takes the code in the body.
   static const String rooms = '/rooms';
   static const String joinRoom = '/rooms/join';
+  static String roomLookup(String code) => '/rooms/lookup/$code';
   static String roomById(int id) => '/rooms/$id';
   static String leaveRoom(int id) => '/rooms/$id/leave';
   static String readyRoom(int id) => '/rooms/$id/ready';

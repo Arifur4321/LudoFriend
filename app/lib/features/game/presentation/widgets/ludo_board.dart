@@ -101,7 +101,9 @@ class _LudoBoardState extends ConsumerState<LudoBoard>
       builder: (context, constraints) {
         final side = constraints.maxWidth;
         final cell = side / BoardLayout.gridSize;
-        final tokenSize = cell * 0.80;
+        // Slightly larger than a cell so pawns read clearly on small phones;
+        // the pawn shape + white outline keeps neighbours distinguishable.
+        final tokenSize = cell * 0.96;
 
         final movingId =
             session.isMoving ? session.lastMove?.movedTokenId : null;

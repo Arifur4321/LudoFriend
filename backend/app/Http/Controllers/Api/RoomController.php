@@ -51,6 +51,37 @@ class RoomController extends Controller
             ->setStatusCode(200);
     }
 
+    /**
+     * Preview a room by code before joining. Read-only: it does NOT seat the
+     * caller, so the "Join Private Room" screen can confirm the host, board and
+     * free seats (or show a clean "not found / full / already started" state)
+     * before the user commits to joining.
+     */
+    public function lookup(Request $request, string $code): JsonResponse
+    {
+        $room = GameRoom::query()
+            ->where('code', strtoupper($code))
+            ->with('host')
+            ->withCount('players')
+            ->first();
+
+        if (! $room) {
+            return response()->json(['message' => 'Room not found.'], 404);
+        }
+
+        return response()->json(['data' => [
+            'code' => $room->code,
+            'board_tier' => $room->board_tier,
+            'mode' => $room->mode,
+            'status' => $room->status,
+            'capacity' => $room->capacity(),
+            'players' => (int) $room->players_count,
+            'host_name' => $room->host?->name,
+            'host_avatar' => $room->host?->avatar,
+            'joinable' => $room->isLobby() && $room->players_count < $room->capacity(),
+        ]]);
+    }
+
     /** Leave a room. */
     public function leave(Request $request, GameRoom $room): JsonResponse
     {

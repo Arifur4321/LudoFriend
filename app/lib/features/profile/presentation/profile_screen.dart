@@ -11,8 +11,11 @@ import '../../../shared/widgets/app_assets.dart';
 import '../../../shared/widgets/app_background.dart';
 import '../../../shared/widgets/primary_button.dart';
 import '../../auth/application/auth_controller.dart';
+import '../../friends/data/friends_repository.dart';
+import '../../room/data/room_repository.dart';
 import '../../wallet/application/wallet_controller.dart';
 import '../application/profile_stats_controller.dart';
+import '../data/match_history_repository.dart';
 import '../data/profile_stats.dart';
 
 class ProfileScreen extends ConsumerWidget {
@@ -64,22 +67,7 @@ class ProfileScreen extends ConsumerWidget {
                 ],
               ),
               const SizedBox(height: 16),
-              Container(
-                padding: const EdgeInsets.all(24),
-                decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.9),
-                    borderRadius: BorderRadius.circular(20)),
-                child: Column(
-                  children: [
-                    SvgPicture.asset(AppAssets.illusEmpty, height: 120),
-                    const SizedBox(height: 12),
-                    Text('No matches yet', style: AppTextStyles.title),
-                    Text('Your match history will appear here.',
-                        style: AppTextStyles.bodyMuted,
-                        textAlign: TextAlign.center),
-                  ],
-                ),
-              ),
+              const _RecentPlayersCard(),
               const SizedBox(height: 20),
               if (signedIn)
                 PrimaryButton(
@@ -168,6 +156,159 @@ class _StatTile extends StatelessWidget {
           Text(label, style: AppTextStyles.bodyMuted),
           Text(value,
               style: AppTextStyles.heading.copyWith(color: AppColors.primary)),
+        ],
+      ),
+    );
+  }
+}
+
+/// Recent human players the user has played with, each with a one-tap "Play"
+/// that opens a private room and re-invites them. Falls back to the original
+/// empty state when there's no match history yet.
+class _RecentPlayersCard extends ConsumerStatefulWidget {
+  const _RecentPlayersCard();
+
+  @override
+  ConsumerState<_RecentPlayersCard> createState() => _RecentPlayersCardState();
+}
+
+class _RecentPlayersCardState extends ConsumerState<_RecentPlayersCard> {
+  int? _invitingId;
+
+  Future<void> _play(RecentPlayer p) async {
+    if (_invitingId != null) return;
+    setState(() => _invitingId = p.id);
+    final messenger = ScaffoldMessenger.of(context);
+    final router = GoRouter.of(context);
+
+    final roomRes = await ref
+        .read(roomRepositoryProvider)
+        .create(mode: '4p', botFill: false, visibility: 'private');
+    if (!mounted) return;
+
+    await roomRes.when(
+      ok: (room) async {
+        ref.read(activeRoomProvider.notifier).state = room;
+        final inv = await ref
+            .read(friendsRepositoryProvider)
+            .inviteToRoom(roomId: room.id, friendUserId: p.id);
+        if (!mounted) return;
+        inv.when(
+          ok: (_) => messenger.showSnackBar(SnackBar(
+              content: Text('Invited ${p.name} — waiting in the lobby.'))),
+          err: (f) =>
+              messenger.showSnackBar(SnackBar(content: Text(f.message))),
+        );
+        // The room exists regardless, so head to the lobby where the host can
+        // also share the code if the realtime invite didn't reach them.
+        router.push(AppRoutes.lobby);
+      },
+      err: (f) => messenger.showSnackBar(SnackBar(content: Text(f.message))),
+    );
+
+    if (mounted) setState(() => _invitingId = null);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final async = ref.watch(recentPlayersProvider);
+    return async.when(
+      loading: () => const SizedBox.shrink(),
+      error: (_, __) => const _NoHistoryCard(),
+      data: (players) {
+        if (players.isEmpty) return const _NoHistoryCard();
+        return Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.95),
+              borderRadius: BorderRadius.circular(20)),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.history_rounded, color: AppColors.primary),
+                  const SizedBox(width: 8),
+                  Text('Recent players', style: AppTextStyles.title),
+                ],
+              ),
+              const SizedBox(height: 2),
+              Text('People you played with — tap Play to invite them again.',
+                  style: AppTextStyles.bodyMuted),
+              const SizedBox(height: 6),
+              for (final p in players)
+                _RecentPlayerTile(
+                  player: p,
+                  busy: _invitingId == p.id,
+                  onPlay: () => _play(p),
+                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _RecentPlayerTile extends StatelessWidget {
+  const _RecentPlayerTile(
+      {required this.player, required this.busy, required this.onPlay});
+  final RecentPlayer player;
+  final bool busy;
+  final VoidCallback onPlay;
+
+  @override
+  Widget build(BuildContext context) {
+    final hasAvatar = player.avatar != null && player.avatar!.isNotEmpty;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        children: [
+          CircleAvatar(
+            radius: 20,
+            backgroundColor: AppColors.surfaceMuted,
+            backgroundImage: hasAvatar ? NetworkImage(player.avatar!) : null,
+            child: hasAvatar
+                ? null
+                : Text(
+                    player.name.isNotEmpty
+                        ? player.name.characters.first.toUpperCase()
+                        : '?',
+                    style: const TextStyle(color: AppColors.ink)),
+          ),
+          const SizedBox(width: 12),
+          Expanded(child: Text(player.name, style: AppTextStyles.body)),
+          FilledButton(
+            onPressed: busy ? null : onPlay,
+            style: FilledButton.styleFrom(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 4)),
+            child: Text(busy ? '…' : 'Play'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Original empty-state, shown until the user has played a match.
+class _NoHistoryCard extends StatelessWidget {
+  const _NoHistoryCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.9),
+          borderRadius: BorderRadius.circular(20)),
+      child: Column(
+        children: [
+          SvgPicture.asset(AppAssets.illusEmpty, height: 120),
+          const SizedBox(height: 12),
+          Text('No matches yet', style: AppTextStyles.title),
+          Text('Your match history will appear here.',
+              style: AppTextStyles.bodyMuted, textAlign: TextAlign.center),
         ],
       ),
     );

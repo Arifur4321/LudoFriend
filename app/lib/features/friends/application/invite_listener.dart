@@ -30,6 +30,7 @@ class InviteListener extends ConsumerStatefulWidget {
 
 class _InviteListenerState extends ConsumerState<InviteListener> {
   StreamSubscription<RealtimeEvent>? _sub;
+  Timer? _presence;
   int? _userId;
   bool _dialogOpen = false;
 
@@ -43,6 +44,7 @@ class _InviteListenerState extends ConsumerState<InviteListener> {
   @override
   void dispose() {
     _sub?.cancel();
+    _presence?.cancel();
     super.dispose();
   }
 
@@ -55,7 +57,13 @@ class _InviteListenerState extends ConsumerState<InviteListener> {
       final rt = ref.read(realtimeMatchServiceProvider);
       rt.joinUser(id);
       _sub ??= rt.events.listen(_onEvent);
-      ref.read(friendsRepositoryProvider).presencePing();
+      // App-wide presence heartbeat so friends see this user as online anywhere
+      // in the app — not only while the Friends screen is open. Server TTL is
+      // 60s, so a 30s cadence keeps the flag warm.
+      final friends = ref.read(friendsRepositoryProvider);
+      friends.presencePing();
+      _presence ??= Timer.periodic(
+          const Duration(seconds: 30), (_) => friends.presencePing());
     } catch (_) {
       // Realtime unavailable — invites just won't arrive; no crash.
     }
@@ -76,17 +84,18 @@ class _InviteListenerState extends ConsumerState<InviteListener> {
     showDialog<void>(
       context: ctx,
       builder: (d) => AlertDialog(
-        title: Text('Play with $name?'),
-        content: Text('$name invited you to a Ludo game.'),
+        title: Text('Invitation from $name'),
+        content: Text('$name invited you to play Ludo. Jump in?'),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(d), child: const Text('Later')),
-          FilledButton(
+          FilledButton.icon(
             onPressed: () async {
               Navigator.pop(d);
               await _accept(code);
             },
-            child: const Text('Join'),
+            icon: const Icon(Icons.play_arrow_rounded),
+            label: const Text('Play'),
           ),
         ],
       ),

@@ -31,6 +31,7 @@ class RoomLobbyScreen extends ConsumerStatefulWidget {
 
 class _RoomLobbyScreenState extends ConsumerState<RoomLobbyScreen> {
   StreamSubscription<RealtimeEvent>? _sub;
+  Timer? _poll;
   bool _navigated = false;
   bool _starting = false;
 
@@ -44,12 +45,19 @@ class _RoomLobbyScreenState extends ConsumerState<RoomLobbyScreen> {
       _sub = rt.events.listen(_onEvent);
       // Auto-ready the local player so the host only needs to press Start.
       ref.read(roomRepositoryProvider).ready(room.id, true).whenComplete(_refresh);
+      // Polling fallback: even if a realtime event is missed (flaky network,
+      // dropped websocket), joins still appear and — critically — the joiner
+      // still enters the match shortly after the host presses Start.
+      _poll = Timer.periodic(const Duration(seconds: 4), (_) {
+        if (!_navigated) _refresh();
+      });
     }
   }
 
   @override
   void dispose() {
     _sub?.cancel();
+    _poll?.cancel();
     final room = ref.read(activeRoomProvider);
     if (room != null) {
       ref.read(realtimeMatchServiceProvider).leaveRoom(room.id);
@@ -126,7 +134,33 @@ class _RoomLobbyScreenState extends ConsumerState<RoomLobbyScreen> {
     final room = ref.watch(activeRoomProvider);
     final myId = ref.watch(authControllerProvider).valueOrNull?.id;
     if (room == null) {
-      return const Scaffold(body: Center(child: Text('No room')));
+      return Scaffold(
+        appBar: AppBar(title: const Text('Room Lobby')),
+        extendBodyBehindAppBar: true,
+        body: AppBackground(
+          child: SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.meeting_room_outlined,
+                      color: Colors.white, size: 48),
+                  const SizedBox(height: 12),
+                  Text('This room is no longer available.',
+                      textAlign: TextAlign.center,
+                      style: AppTextStyles.body.copyWith(color: Colors.white)),
+                  const SizedBox(height: 16),
+                  PrimaryButton(
+                    label: 'Back to Home',
+                    onPressed: () => context.go(AppRoutes.home),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
     }
     final isHost = '${room.hostUserId}' == myId;
 
@@ -175,10 +209,13 @@ class _RoomLobbyScreenState extends ConsumerState<RoomLobbyScreen> {
                       IconButton(
                         icon: const Icon(Icons.ios_share_rounded,
                             color: AppColors.primary),
+                        tooltip: 'Share invite',
                         onPressed: () => SharePlus.instance.share(
                           ShareParams(
-                            text:
-                                'Join my Ludo Friends room with code ${room.code}.',
+                            text: 'Join my Ludo Friends room! 🎲\n'
+                                'Room code: ${room.code}\n'
+                                'Get the game: '
+                                'https://play.google.com/store/apps/details?id=com.arifurrahman.ludofriends',
                           ),
                         ),
                       ),

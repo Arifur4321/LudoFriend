@@ -12,7 +12,7 @@ import '../../../shared/widgets/app_background.dart';
 import '../../../shared/widgets/bouncing_button.dart';
 import '../../game/application/game_config.dart';
 import '../../game/application/game_controller.dart';
-import '../../room/application/room_draft.dart';
+import '../../room/data/room_repository.dart';
 import '../../wallet/presentation/widgets/coin_balance_chip.dart';
 import '../application/boards_controller.dart';
 import '../data/board_models.dart';
@@ -56,21 +56,39 @@ class _BoardSelectScreenState extends ConsumerState<BoardSelectScreen> {
     context.go(AppRoutes.game);
   }
 
-  void _invite(BuildContext context, WidgetRef ref, BoardTier tier) {
+  /// Create a real, server-authoritative private room for this board tier and
+  /// open the lobby, where the host can share the room code, invite friends and
+  /// start once someone joins. Replaces the old local-draft path that pushed the
+  /// lobby with no server room (which rendered a blank "No room" screen).
+  Future<void> _createOnlineRoom(
+    BuildContext context,
+    WidgetRef ref, {
+    required BoardTier tier,
+    required int seats,
+    required bool teamMode,
+  }) async {
     ref.read(activeBoardThemeProvider.notifier).state =
         BoardTheme.forKey(tier.key);
     ref.read(localCacheProvider).setSelectedBoardTier(tier.key);
-    ref.read(roomDraftProvider.notifier).state = RoomDraft(
-      code: RoomDraft.generateCode(),
-      seats: tier.supportsFour ? 4 : 2,
-      botFill: false,
-      turnTimer: 20,
-      isPrivate: true,
-      boardThemeKey: tier.key,
-      boardName: tier.name,
-      teamMode: false,
+
+    final messenger = ScaffoldMessenger.of(context);
+    final router = GoRouter.of(context);
+    final res = await ref.read(roomRepositoryProvider).create(
+          mode: seats == 2 ? '2p' : '4p',
+          boardTier: tier.key,
+          botFill: false,
+          turnTimer: 20,
+          teamMode: teamMode,
+          visibility: 'private',
+        );
+    if (!mounted) return;
+    res.when(
+      ok: (room) {
+        ref.read(activeRoomProvider.notifier).state = room;
+        router.push(AppRoutes.lobby);
+      },
+      err: (f) => messenger.showSnackBar(SnackBar(content: Text(f.message))),
     );
-    context.push(AppRoutes.lobby);
   }
 
   Future<void> _openSheet(
@@ -87,6 +105,11 @@ class _BoardSelectScreenState extends ConsumerState<BoardSelectScreen> {
           onPlay: (h, b, team) {
             Navigator.pop(ctx);
             _play(context, ref, tier: tier, humans: h, bots: b, teamMode: team);
+          },
+          onPlayOnline: (seats, team) {
+            Navigator.pop(ctx);
+            _createOnlineRoom(context, ref,
+                tier: tier, seats: seats, teamMode: team);
           }),
     );
   }
@@ -134,7 +157,28 @@ class _BoardSelectScreenState extends ConsumerState<BoardSelectScreen> {
                         style: AppTextStyles.body.copyWith(color: Colors.white),
                         textAlign: TextAlign.center),
                   ),
-                  const SizedBox(height: 18),
+                  const SizedBox(height: 14),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 24),
+                    child: SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: () => context.push(AppRoutes.joinRoom),
+                        icon: const Icon(Icons.vpn_key_rounded,
+                            color: Colors.white),
+                        label: const Text('Join Private Room',
+                            style: TextStyle(color: Colors.white)),
+                        style: OutlinedButton.styleFrom(
+                          side: const BorderSide(color: Colors.white54),
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
                   SizedBox(
                     height: 440,
                     child: PageView.builder(
@@ -146,7 +190,10 @@ class _BoardSelectScreenState extends ConsumerState<BoardSelectScreen> {
                         return _BoardCard(
                           tier: tier,
                           onJoin: () => _openSheet(context, ref, tier),
-                          onInvite: () => _invite(context, ref, tier),
+                          onInvite: () => _createOnlineRoom(context, ref,
+                              tier: tier,
+                              seats: tier.supportsFour ? 4 : 2,
+                              teamMode: false),
                         );
                       },
                     ),
@@ -215,7 +262,11 @@ class _BoardCard extends StatelessWidget {
         ),
         child: Column(
           children: [
-            BoardPreview(theme: theme, size: 188),
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: onJoin,
+              child: BoardPreview(theme: theme, size: 188),
+            ),
             const SizedBox(height: 16),
             Row(
               children: [
@@ -366,9 +417,11 @@ class _Badge extends StatelessWidget {
 }
 
 class _ModeSheet extends StatefulWidget {
-  const _ModeSheet({required this.tier, required this.onPlay});
+  const _ModeSheet(
+      {required this.tier, required this.onPlay, required this.onPlayOnline});
   final BoardTier tier;
   final void Function(int humans, int bots, bool teamMode) onPlay;
+  final void Function(int seats, bool teamMode) onPlayOnline;
 
   @override
   State<_ModeSheet> createState() => _ModeSheetState();
@@ -428,12 +481,21 @@ class _ModeSheetState extends State<_ModeSheet> {
             ),
           ],
           const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            child: _ModeAction(
+              label: 'Play Online — Invite Friends',
+              color: AppColors.primary,
+              onTap: () => widget.onPlayOnline(_seats, _teams && canTeam),
+            ),
+          ),
+          const SizedBox(height: 10),
           Row(
             children: [
               Expanded(
                 child: _ModeAction(
                   label: 'vs Computer',
-                  color: AppColors.primary,
+                  color: AppColors.tokenBlue,
                   onTap: () => widget.onPlay(1, _seats - 1, _teams),
                 ),
               ),
@@ -441,12 +503,15 @@ class _ModeSheetState extends State<_ModeSheet> {
               Expanded(
                 child: _ModeAction(
                   label: 'Pass & Play',
-                  color: theme.frame,
+                  color: AppColors.tokenGreen,
                   onTap: () => widget.onPlay(_seats, 0, _teams),
                 ),
               ),
             ],
           ),
+          const SizedBox(height: 8),
+          Text('Online lets your Facebook friends join with the room code.',
+              style: AppTextStyles.bodyMuted, textAlign: TextAlign.center),
         ],
       ),
     );

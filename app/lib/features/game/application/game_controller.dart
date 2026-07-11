@@ -9,12 +9,15 @@ import '../../../core/utils/logger.dart';
 import '../../../game_engine/bot/easy_bot.dart';
 import '../../../game_engine/ludo_engine.dart';
 import '../../../game_engine/models/dice.dart';
+import '../../../game_engine/models/game_state.dart';
 import '../../../game_engine/models/game_status.dart';
+import '../../../game_engine/models/ludo_color.dart';
 import '../../../services/audio/audio_service.dart';
 import '../../../services/realtime/realtime_match_service.dart';
 import '../../../services/realtime/websocket_service.dart';
 import '../../auth/application/auth_controller.dart';
 import '../../settings/application/settings_controller.dart';
+import 'celebration.dart';
 import 'game_chat_state.dart';
 import 'game_config.dart';
 import 'game_session.dart';
@@ -63,6 +66,11 @@ class GameController extends StateNotifier<GameSession> {
   late final DiceRoller _dice;
   bool _busy = false;
   StreamSubscription<RealtimeEvent>? _rtSub;
+
+  /// Last authoritative snapshot applied in an online match, used to detect
+  /// home-arrivals / captures / the win from state diffs so BOTH players get
+  /// the same sounds + celebrations regardless of who moved.
+  GameState? _lastSyncedGame;
 
   bool get _online => config.isOnline && config.matchId != null;
 
@@ -185,8 +193,19 @@ class GameController extends StateNotifier<GameSession> {
       _audio.play(Sfx.win);
       return;
     }
+    if (result.reachedHome) {
+      _audio.play(Sfx.home);
+      _celebrate(CelebrationKind.tokenHome,
+          LudoColor.fromId(result.movedTokenId.split('_').first));
+    }
     await Future<void>.delayed(const Duration(milliseconds: 220));
     _scheduleNext();
+  }
+
+  void _celebrate(CelebrationKind kind, LudoColor color) {
+    if (!mounted) return;
+    _ref.read(celebrationProvider.notifier).state =
+        CelebrationEvent(kind, color);
   }
 
   /// After a settled state, let a bot continue automatically; a human waiting
@@ -264,7 +283,6 @@ class GameController extends StateNotifier<GameSession> {
     final color = parts.isNotEmpty ? parts[0] : (config.myColor ?? '');
     final token = int.tryParse(parts.length > 1 ? parts[1] : '') ?? 0;
     try {
-      _audio.play(Sfx.move);
       final res = await _ref.read(dioProvider).post(
         ApiEndpoints.moveToken(config.matchId!),
         data: {'color': color, 'token': token},
@@ -272,8 +290,9 @@ class GameController extends StateNotifier<GameSession> {
       final data = _payload(res.data);
       final serverState = _asMap(data['state']);
       if (serverState != null) {
+        // Sounds/celebrations (capture, home, win) come from the state diff in
+        // _applyServerState, so they fire identically for every player.
         _applyServerState(serverState);
-        if (data['winner'] != null) _audio.play(Sfx.win);
       }
     } catch (e, st) {
       AppLogger.e('online move failed', e, st);
@@ -291,7 +310,51 @@ class GameController extends StateNotifier<GameSession> {
       rules: config.rules,
       movableTokenIds: movable,
     );
+    final prev = _lastSyncedGame;
+    _lastSyncedGame = game;
     state = GameSession(game: game, diceFace: game.lastDice);
+    // Never on the first snapshot (joining/reconnecting mustn't replay noises).
+    if (prev != null) _announceDiff(prev, game);
+  }
+
+  /// Compare consecutive authoritative snapshots and fire the matching sounds
+  /// and celebrations: a token arriving home, a capture (sad sound), the win.
+  void _announceDiff(GameState prev, GameState next) {
+    if (prev.isFinished) return; // already over — nothing left to announce.
+
+    var captured = false;
+    var homeColor = LudoColor.values.first;
+    var reachedHome = false;
+    for (final p in next.players) {
+      final c = p.color;
+      int homes(GameState g) =>
+          g.tokensOf(c).where((t) => t.isFinished).length;
+      int based(GameState g) => g.tokensOf(c).where((t) => t.isInBase).length;
+      if (homes(next) > homes(prev)) {
+        reachedHome = true;
+        homeColor = c;
+      }
+      if (based(next) > based(prev)) captured = true;
+    }
+
+    if (next.isFinished) {
+      _audio.play(Sfx.win);
+      return; // the WinnerOverlay is the celebration.
+    }
+    if (reachedHome) {
+      _audio.play(Sfx.home);
+      _celebrate(CelebrationKind.tokenHome, homeColor);
+      return;
+    }
+    if (captured) {
+      _audio.play(Sfx.capture);
+      return;
+    }
+    // Plain move (anyone's): audible so the opponent's turns feel alive.
+    final prevPos = {for (final t in prev.tokens) t.id: t.position};
+    final moved = next.tokens
+        .any((t) => prevPos.containsKey(t.id) && prevPos[t.id] != t.position);
+    if (moved) _audio.play(Sfx.move);
   }
 
   void _onRealtimeEvent(RealtimeEvent ev) {

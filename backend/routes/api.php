@@ -98,6 +98,10 @@ Route::prefix('v1')->group(function () {
         // Rooms — creation/show at api rate; join at game rate.
         Route::middleware('throttle:60,1')->group(function () {
             Route::post('rooms', [RoomController::class, 'create']);
+            // Preview a private room by code before joining (read-only, no seat).
+            // Declared before the {room} id route so it never binds as an id.
+            Route::get('rooms/lookup/{code}', [RoomController::class, 'lookup'])
+                ->where('code', '[A-Za-z0-9]{4,8}');
             Route::get('rooms/{room}', [RoomController::class, 'show']);
             Route::post('rooms/{room}/leave', [RoomController::class, 'leave']);
             Route::post('rooms/{room}/ready', [RoomController::class, 'ready']);

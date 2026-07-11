@@ -10,10 +10,12 @@ import '../../../shared/theme/app_colors.dart';
 import '../../../shared/theme/board_theme.dart';
 import '../../../shared/widgets/app_background.dart';
 import '../../settings/application/settings_controller.dart';
+import '../application/celebration.dart';
 import '../application/game_chat_state.dart';
 import '../application/game_config.dart';
 import '../application/game_controller.dart';
 import '../application/game_session.dart';
+import 'widgets/celebration_burst.dart';
 import 'widgets/dice_widget.dart';
 import 'widgets/game_action_bar.dart';
 import 'widgets/game_chat.dart';
@@ -49,6 +51,15 @@ class GameScreen extends ConsumerWidget {
         flashEmoji(context, next);
         Future.microtask(
             () => ref.read(incomingEmojiProvider.notifier).state = null);
+      }
+    });
+
+    // Flash a short celebration when any player's token reaches home.
+    ref.listen<CelebrationEvent?>(celebrationProvider, (prev, next) {
+      if (next != null && context.mounted) {
+        flashTokenHome(context, AppColors.of(next.color));
+        Future.microtask(
+            () => ref.read(celebrationProvider.notifier).state = null);
       }
     });
 

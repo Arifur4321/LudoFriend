@@ -93,7 +93,7 @@ class HomeScreen extends ConsumerWidget {
                             child: _MenuTile(
                               icon: 'room',
                               label: 'Private Room',
-                              onTap: () => context.push(AppRoutes.createRoom),
+                              onTap: () => _privateRoomSheet(context),
                             ),
                           ),
                         ],
@@ -128,6 +128,66 @@ class HomeScreen extends ConsumerWidget {
       ),
     );
   }
+}
+
+/// Create-or-join chooser for private rooms, so joining a friend's room by
+/// code is reachable straight from the home screen.
+void _privateRoomSheet(BuildContext context) {
+  showModalBottomSheet<void>(
+    context: context,
+    backgroundColor: Colors.white,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+    ),
+    builder: (ctx) => SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('Private Room', style: AppTextStyles.heading),
+            const SizedBox(height: 4),
+            Text('Play with friends using a room code',
+                style: AppTextStyles.bodyMuted),
+            const SizedBox(height: 14),
+            ListTile(
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16)),
+              tileColor: AppColors.surfaceMuted,
+              leading: const CircleAvatar(
+                backgroundColor: AppColors.primary,
+                child: Icon(Icons.add_home_rounded, color: Colors.white),
+              ),
+              title: Text('Create a room', style: AppTextStyles.title),
+              subtitle: Text('Get a code to share with friends',
+                  style: AppTextStyles.bodyMuted),
+              onTap: () {
+                Navigator.pop(ctx);
+                context.push(AppRoutes.createRoom);
+              },
+            ),
+            const SizedBox(height: 10),
+            ListTile(
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16)),
+              tileColor: AppColors.surfaceMuted,
+              leading: const CircleAvatar(
+                backgroundColor: AppColors.tokenGreen,
+                child: Icon(Icons.vpn_key_rounded, color: Colors.white),
+              ),
+              title: Text('Join with code', style: AppTextStyles.title),
+              subtitle: Text("Enter a friend's room code",
+                  style: AppTextStyles.bodyMuted),
+              onTap: () {
+                Navigator.pop(ctx);
+                context.push(AppRoutes.joinRoom);
+              },
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
 }
 
 class _AccountChip extends StatelessWidget {

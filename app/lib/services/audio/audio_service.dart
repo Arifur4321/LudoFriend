@@ -6,7 +6,7 @@ import '../../core/di/providers.dart';
 /// The set of in-game sound effects. Files live in `assets/sfx/` and are
 /// intentionally short, royalty-free placeholders that can be swapped for final
 /// audio without code changes.
-enum Sfx { dice, move, capture, win, button }
+enum Sfx { dice, move, capture, win, button, home }
 
 /// Plays short sound effects, gated by the user's sound preference. All
 /// playback failures are swallowed — audio is never allowed to break gameplay.
@@ -25,6 +25,7 @@ class AudioService {
     Sfx.capture: 'sfx/capture.wav',
     Sfx.win: 'sfx/win.wav',
     Sfx.button: 'sfx/button.wav',
+    Sfx.home: 'sfx/token_home.wav',
   };
 
   Future<void> play(Sfx sfx) async {

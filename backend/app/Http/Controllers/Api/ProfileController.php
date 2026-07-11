@@ -62,7 +62,7 @@ class ProfileController extends Controller
             ->pluck('match_id');
 
         $matches = \App\Models\Matchup::whereIn('id', $matchIds)
-            ->with('players')
+            ->with('players.user')
             ->latest('id')
             ->paginate(20);
 

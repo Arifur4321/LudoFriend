@@ -154,3 +154,44 @@ class OnlineMatchModel {
     );
   }
 }
+
+/// A read-only preview of a room fetched by its code (GET /rooms/lookup/{code}).
+/// Used by the "Join Private Room" screen to confirm the host / board / free
+/// seats before the user commits to joining. Does not seat the user.
+class RoomPreview {
+  const RoomPreview({
+    required this.code,
+    required this.boardTier,
+    required this.mode,
+    required this.status,
+    required this.capacity,
+    required this.players,
+    required this.joinable,
+    this.hostName,
+    this.hostAvatar,
+  });
+
+  final String code;
+  final String boardTier;
+  final String mode;
+  final String status;
+  final int capacity;
+  final int players;
+  final bool joinable;
+  final String? hostName;
+  final String? hostAvatar;
+
+  int get seatsLeft => (capacity - players).clamp(0, capacity);
+
+  factory RoomPreview.fromJson(Map<String, dynamic> j) => RoomPreview(
+        code: j['code'] as String? ?? '',
+        boardTier: j['board_tier'] as String? ?? 'casual',
+        mode: j['mode'] as String? ?? '4p',
+        status: j['status'] as String? ?? 'lobby',
+        capacity: (j['capacity'] as num?)?.toInt() ?? 4,
+        players: (j['players'] as num?)?.toInt() ?? 0,
+        joinable: j['joinable'] as bool? ?? false,
+        hostName: j['host_name'] as String?,
+        hostAvatar: j['host_avatar'] as String?,
+      );
+}
