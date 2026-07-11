@@ -50,16 +50,18 @@ class GoogleAuthService {
         );
       }
 
-      final serverAuth =
-          await account.authorizationClient.authorizeServer(const <String>[]);
-
+      // We intentionally do NOT call authorizationClient.authorizeServer here:
+      // the backend authenticates the user from the ID token alone, and
+      // authorizeServer requires a non-empty scope list (an empty list throws
+      // "requestedScopes cannot be null or empty"). Identity only — no
+      // Gmail/Drive/Contacts scopes are requested.
       return GoogleProfile(
         id: account.id,
         name: account.displayName ?? account.email,
         email: account.email,
         photoUrl: account.photoUrl,
         idToken: idToken,
-        serverAuthCode: serverAuth?.serverAuthCode,
+        serverAuthCode: null,
       );
     } on GoogleSignInException catch (e) {
       AppLogger.auth('Google sign-in exception code=${e.code.name} desc=${e.description ?? ''}');

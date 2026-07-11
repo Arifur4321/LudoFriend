@@ -73,8 +73,11 @@ class AuthController extends AsyncNotifier<AuthUser?> {
       return res.when(
         ok: (u) {
           AppLogger.auth('Facebook backend login succeeded');
+          // Prefer the freshly-fetched Facebook photo URL (guaranteed loadable
+          // for this session) over the backend-stored one, which may be a
+          // stale/expired/not-yet-deployed value.
           state = AsyncData(u.copyWith(
-              name: u.name, avatarUrl: u.avatarUrl ?? profile.pictureUrl));
+              name: u.name, avatarUrl: profile.pictureUrl ?? u.avatarUrl));
           return true;
         },
         err: (f) {
@@ -104,8 +107,9 @@ class AuthController extends AsyncNotifier<AuthUser?> {
       );
       return res.when(
         ok: (u) {
+          // Prefer the fresh Google photo URL over the backend-stored one.
           state = AsyncData(u.copyWith(
-              name: u.name, avatarUrl: u.avatarUrl ?? profile.photoUrl));
+              name: u.name, avatarUrl: profile.photoUrl ?? u.avatarUrl));
           return true;
         },
         err: (f) {

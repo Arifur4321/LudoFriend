@@ -4,12 +4,16 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/router/app_routes.dart';
+import '../../../core/utils/format.dart';
 import '../../../shared/theme/app_colors.dart';
 import '../../../shared/theme/app_text_styles.dart';
 import '../../../shared/widgets/app_assets.dart';
 import '../../../shared/widgets/app_background.dart';
 import '../../../shared/widgets/primary_button.dart';
 import '../../auth/application/auth_controller.dart';
+import '../../wallet/application/wallet_controller.dart';
+import '../application/profile_stats_controller.dart';
+import '../data/profile_stats.dart';
 
 class ProfileScreen extends ConsumerWidget {
   const ProfileScreen({super.key});
@@ -18,6 +22,9 @@ class ProfileScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final user = ref.watch(authControllerProvider).valueOrNull;
     final signedIn = user != null && !user.isGuest;
+    final stats =
+        ref.watch(profileStatsProvider).valueOrNull ?? ProfileStats.empty;
+    final coins = ref.watch(coinsProvider);
 
     return Scaffold(
       appBar: AppBar(title: const Text('Profile')),
@@ -47,13 +54,13 @@ class ProfileScreen extends ConsumerWidget {
                 childAspectRatio: 2.1,
                 mainAxisSpacing: 12,
                 crossAxisSpacing: 12,
-                children: const [
-                  _StatTile(label: 'Matches', value: '0'),
-                  _StatTile(label: 'Wins', value: '0'),
-                  _StatTile(label: 'Losses', value: '0'),
-                  _StatTile(label: 'Win rate', value: '—'),
-                  _StatTile(label: 'Best streak', value: '0'),
-                  _StatTile(label: 'Coins', value: '0'),
+                children: [
+                  _StatTile(label: 'Matches', value: '${stats.matchesPlayed}'),
+                  _StatTile(label: 'Wins', value: '${stats.wins}'),
+                  _StatTile(label: 'Losses', value: '${stats.losses}'),
+                  _StatTile(label: 'Win rate', value: stats.winRateLabel),
+                  _StatTile(label: 'Best streak', value: '${stats.bestStreak}'),
+                  _StatTile(label: 'Coins', value: formatCoins(coins)),
                 ],
               ),
               const SizedBox(height: 16),
