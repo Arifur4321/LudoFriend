@@ -1,7 +1,7 @@
 name: ludo_friends
 description: "Ludo Friends — an original animated online/offline multiplayer Ludo game."
 publish_to: "none"
-version: 1.0.0+2
+version: 1.0.0+3
 
 environment:
   sdk: ">=3.5.0 <4.0.0"
@@ -48,6 +48,9 @@ dependencies:
   share_plus: ^12.0.2
   # Opens the public legal pages (privacy / terms / data deletion) in a browser.
   url_launcher: ^6.3.1
+  # Shows the running version + build number on the home screen, so testers can
+  # instantly confirm which binary is installed.
+  package_info_plus: ^8.0.0
 
 dev_dependencies:
   flutter_test:

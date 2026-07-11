@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../../core/router/app_routes.dart';
 import '../../../shared/theme/app_colors.dart';
@@ -118,6 +119,10 @@ class HomeScreen extends ConsumerWidget {
                           ),
                         ],
                       ),
+                      const SizedBox(height: 18),
+                      // Lets testers confirm at a glance which build is
+                      // installed (Play versionName + versionCode).
+                      const _VersionLabel(),
                     ],
                   ),
                 ),
@@ -126,6 +131,27 @@ class HomeScreen extends ConsumerWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Small "v1.0.0 (build N)" line at the bottom of the home menu.
+class _VersionLabel extends StatelessWidget {
+  const _VersionLabel();
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<PackageInfo>(
+      future: PackageInfo.fromPlatform(),
+      builder: (context, snap) {
+        final info = snap.data;
+        if (info == null) return const SizedBox.shrink();
+        return Text(
+          'v${info.version} (build ${info.buildNumber})',
+          style: AppTextStyles.label
+              .copyWith(color: Colors.white54, fontSize: 11),
+        );
+      },
     );
   }
 }
