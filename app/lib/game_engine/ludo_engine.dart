@@ -158,10 +158,12 @@ class LudoEngine {
 
     // Capture: only on the shared ring and only off safe cells.
     final captured = <String>[];
+    final capturedFrom = <String, int>{};
     final landedAbs = t.absoluteCell();
     if (landedAbs != null && !rules.safeCells.contains(landedAbs)) {
       for (final o in tokens) {
         if (o.color != t.color && o.isOnRing && o.absoluteCell() == landedAbs) {
+          capturedFrom[o.id] = o.position;
           o.position = RuleConfig.inBase;
           captured.add(o.id);
         }
@@ -210,6 +212,7 @@ class LudoEngine {
       toPosition: t.position,
       path: path,
       capturedTokenIds: captured,
+      capturedFromPositions: capturedFrom,
       reachedHome: reachedHome,
       grantsExtraTurn: winner == null && extra,
       winner: winner,

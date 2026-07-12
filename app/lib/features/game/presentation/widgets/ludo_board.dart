@@ -13,6 +13,7 @@ import '../../../../game_engine/rules/rule_config.dart';
 import '../../../../shared/theme/board_theme.dart';
 import '../../application/game_controller.dart';
 import 'board_painter.dart';
+import 'token_hit_resolver.dart';
 import 'token_piece.dart';
 
 /// The interactive board: static art (BoardPainter) + animated token layer.
@@ -57,12 +58,44 @@ class _LudoBoardState extends ConsumerState<LudoBoard>
     return pts;
   }
 
+  List<Offset> _capturedPolyline(
+      String tokenId, int fromPosition, double cell) {
+    final parts = tokenId.split('_');
+    final color = LudoColor.fromId(parts[0]);
+    final index = int.parse(parts[1]);
+    final pts = <Offset>[
+      _center(BoardLayout.offsetForRelative(color, fromPosition), cell),
+    ];
+    for (var rel = fromPosition - 1; rel >= 0; rel--) {
+      pts.add(_center(BoardLayout.offsetForRelative(color, rel), cell));
+    }
+    pts.add(_center(BoardLayout.baseSlots[color]![index], cell));
+    return pts;
+  }
+
+  Duration _mainDuration(MoveResult move) =>
+      AppConstants.tokenStep * (move.path.isEmpty ? 1 : move.path.length);
+
+  Duration _captureDuration(MoveResult move) =>
+      AppConstants.capturedTokenStep * move.maxCapturedReturnSteps;
+
+  Duration _animationDuration(MoveResult move) =>
+      _mainDuration(move) + _captureDuration(move);
+
   Offset _lerpPath(List<Offset> pts, double t) {
     if (pts.length == 1) return pts.first;
     final total = pts.length - 1;
     final pos = (t * total).clamp(0.0, total.toDouble());
     final i = pos.floor().clamp(0, total - 1);
-    return Offset.lerp(pts[i], pts[i + 1], pos - i)!;
+    final local = Curves.easeInOut.transform(pos - i);
+    return Offset.lerp(pts[i], pts[i + 1], local)!;
+  }
+
+  double _segmentProgress(List<Offset> pts, double t) {
+    if (pts.length <= 1 || t <= 0) return 0;
+    if (t >= 1) return 1;
+    final pos = t * (pts.length - 1);
+    return pos - pos.floor();
   }
 
   Offset _stackOffset(int i, int n, double cell) {
@@ -88,9 +121,7 @@ class _LudoBoardState extends ConsumerState<LudoBoard>
         session.lastMove != null &&
         !identical(session.lastMove, _current)) {
       _current = session.lastMove;
-      final steps =
-          session.lastMove!.path.isEmpty ? 1 : session.lastMove!.path.length;
-      _move.duration = AppConstants.tokenStep * steps;
+      _move.duration = _animationDuration(session.lastMove!);
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _move.forward(from: 0);
       });
@@ -107,8 +138,12 @@ class _LudoBoardState extends ConsumerState<LudoBoard>
 
         final movingId =
             session.isMoving ? session.lastMove?.movedTokenId : null;
+        final capturedIds = session.isMoving
+            ? session.lastMove?.capturedTokenIds.toSet() ?? const <String>{}
+            : const <String>{};
         final human = game.currentPlayer.isHuman &&
-            game.status == GameStatus.awaitingMove;
+            game.status == GameStatus.awaitingMove &&
+            !session.isBusy;
         final movable =
             human ? game.pendingMovableTokenIds.toSet() : const <String>{};
 
@@ -126,7 +161,9 @@ class _LudoBoardState extends ConsumerState<LudoBoard>
         }
 
         // Group non-moving tokens by cell for neat stacking.
-        final drawn = game.tokens.where((t) => t.id != movingId).toList();
+        final drawn = game.tokens
+            .where((t) => t.id != movingId && !capturedIds.contains(t.id))
+            .toList();
         final groups = <String, List<Token>>{};
         for (final t in drawn) {
           final gp = BoardLayout.cellOf(t);
@@ -136,15 +173,18 @@ class _LudoBoardState extends ConsumerState<LudoBoard>
         final children = <Widget>[
           CustomPaint(
             size: Size.square(side),
-            painter: BoardPainter(highlightCells: highlights, theme: boardTheme),
+            painter:
+                BoardPainter(highlightCells: highlights, theme: boardTheme),
           ),
         ];
+        final tokenCenters = <String, Offset>{};
 
         for (final list in groups.values) {
           for (var k = 0; k < list.length; k++) {
             final t = list[k];
             final center = _center(BoardLayout.cellOf(t), cell) +
                 _stackOffset(k, list.length, cell);
+            tokenCenters[t.id] = center;
             final isMovable = movable.contains(t.id);
             children.add(Positioned(
               left: center.dx - tokenSize / 2,
@@ -155,7 +195,6 @@ class _LudoBoardState extends ConsumerState<LudoBoard>
                 token: t,
                 size: tokenSize,
                 movable: isMovable,
-                onTap: isMovable ? () => controller.pickToken(t.id) : null,
               ),
             ));
           }
@@ -168,14 +207,24 @@ class _LudoBoardState extends ConsumerState<LudoBoard>
           final token =
               Token(color: color, index: index, position: m.toPosition);
           final pts = _polyline(m, cell);
+          final mainMs = _mainDuration(m).inMicroseconds;
+          final totalMs = _animationDuration(m).inMicroseconds;
+          final mainEnd = totalMs == 0 ? 1.0 : mainMs / totalMs;
           children.add(Positioned.fill(
             child: IgnorePointer(
               child: AnimatedBuilder(
                 animation: _move,
                 child: TokenPiece(token: token, size: tokenSize),
                 builder: (context, child) {
-                  final c = _lerpPath(pts, _move.value);
-                  final hop = math.sin(_move.value * math.pi) * cell * 0.18;
+                  final progress = mainEnd <= 0
+                      ? 1.0
+                      : (_move.value / mainEnd).clamp(0.0, 1.0);
+                  final c = _lerpPath(pts, progress);
+                  final hop = math.sin(
+                        _segmentProgress(pts, progress) * math.pi,
+                      ) *
+                      cell *
+                      0.18;
                   return Transform.translate(
                     offset: Offset(
                         c.dx - tokenSize / 2, c.dy - tokenSize / 2 - hop),
@@ -189,12 +238,73 @@ class _LudoBoardState extends ConsumerState<LudoBoard>
               ),
             ),
           ));
+
+          for (final entry in m.capturedFromPositions.entries) {
+            final capturedParts = entry.key.split('_');
+            final capturedColor = LudoColor.fromId(capturedParts[0]);
+            final capturedIndex = int.parse(capturedParts[1]);
+            final capturedToken = Token(
+              color: capturedColor,
+              index: capturedIndex,
+              position: entry.value,
+            );
+            final capturedPath =
+                _capturedPolyline(entry.key, entry.value, cell);
+            children.add(Positioned.fill(
+              child: IgnorePointer(
+                child: AnimatedBuilder(
+                  animation: _move,
+                  child: TokenPiece(token: capturedToken, size: tokenSize),
+                  builder: (context, child) {
+                    final progress = mainEnd >= 1
+                        ? 1.0
+                        : ((_move.value - mainEnd) / (1 - mainEnd))
+                            .clamp(0.0, 1.0);
+                    final c = _lerpPath(capturedPath, progress);
+                    final hop = math.sin(
+                          _segmentProgress(capturedPath, progress) * math.pi,
+                        ) *
+                        cell *
+                        0.11;
+                    return Transform.translate(
+                      offset: Offset(
+                        c.dx - tokenSize / 2,
+                        c.dy - tokenSize / 2 - hop,
+                      ),
+                      child: Align(
+                        alignment: Alignment.topLeft,
+                        child: SizedBox(
+                          width: tokenSize,
+                          height: tokenSize,
+                          child: child,
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ));
+          }
         }
 
-        return SizedBox(
-          width: side,
-          height: side,
-          child: Stack(children: children),
+        return Listener(
+          behavior: HitTestBehavior.opaque,
+          onPointerDown: human
+              ? (event) {
+                  final tokenId = nearestMovableToken(
+                    pointer: event.localPosition,
+                    centers: tokenCenters,
+                    movableTokenIds: movable,
+                    maximumDistance: cell * 0.72,
+                  );
+                  if (tokenId != null) controller.pickToken(tokenId);
+                }
+              : null,
+          child: SizedBox(
+            width: side,
+            height: side,
+            child: Stack(children: children),
+          ),
         );
       },
     );

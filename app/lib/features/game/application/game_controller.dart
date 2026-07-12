@@ -12,6 +12,7 @@ import '../../../game_engine/models/dice.dart';
 import '../../../game_engine/models/game_state.dart';
 import '../../../game_engine/models/game_status.dart';
 import '../../../game_engine/models/ludo_color.dart';
+import '../../../game_engine/models/move_result.dart';
 import '../../../services/audio/audio_service.dart';
 import '../../../services/realtime/realtime_match_service.dart';
 import '../../../services/realtime/websocket_service.dart';
@@ -68,6 +69,7 @@ class GameController extends StateNotifier<GameSession> {
   bool _refreshing = false;
   StreamSubscription<RealtimeEvent>? _rtSub;
   Timer? _statePoll;
+  int _lastAnimatedMoveSequence = -1;
 
   /// Last authoritative snapshot applied in an online match, used to detect
   /// home-arrivals / captures / the win from state diffs so BOTH players get
@@ -179,9 +181,9 @@ class GameController extends StateNotifier<GameSession> {
     state = state.copyWith(isMoving: true, lastMove: result, banner: null);
     _audio.play(result.didCapture ? Sfx.capture : Sfx.move);
 
-    final steps = result.path.isEmpty ? 1 : result.path.length;
     await Future<void>.delayed(
-        AppConstants.tokenStep * steps + const Duration(milliseconds: 140));
+      _moveAnimationDuration(result) + const Duration(milliseconds: 140),
+    );
     if (!mounted) return;
 
     state = state.copyWith(
@@ -250,7 +252,7 @@ class GameController extends StateNotifier<GameSession> {
   }
 
   Future<void> _refreshState() async {
-    if (!mounted || _busy || _refreshing) return;
+    if (!mounted || _busy || _refreshing || state.isMoving) return;
     _refreshing = true;
     try {
       final res = await _ref
@@ -263,6 +265,21 @@ class GameController extends StateNotifier<GameSession> {
         final movable = turn != null && turn == config.myColor
             ? ServerStateAdapter.movableIds(turn, payload['legal_moves'])
             : const <String>[];
+        final lastMove = _moveFromState(serverState);
+        if (_lastSyncedGame == null) {
+          if (lastMove?.sequence != null) {
+            _lastAnimatedMoveSequence = lastMove!.sequence!;
+          }
+        } else if (lastMove != null &&
+            lastMove.sequence != null &&
+            lastMove.sequence! > _lastAnimatedMoveSequence &&
+            _canAnimateFromCurrentState(lastMove)) {
+          _lastAnimatedMoveSequence = lastMove.sequence!;
+          await _playMoveAnimation(lastMove);
+          if (!mounted) return;
+        } else if (lastMove?.sequence != null) {
+          _lastAnimatedMoveSequence = lastMove!.sequence!;
+        }
         _applyServerState(serverState, movable: movable);
       }
     } catch (e, st) {
@@ -305,10 +322,20 @@ class GameController extends StateNotifier<GameSession> {
 
   Future<void> _sendMove(String tokenId) async {
     if (_busy || !state.game.pendingMovableTokenIds.contains(tokenId)) return;
+    final originalGame = state.game;
+    final predicted = _engine.applyMove(originalGame, tokenId).result;
     final parts = tokenId.split('_');
     final color = parts.isNotEmpty ? parts[0] : (config.myColor ?? '');
     final token = int.tryParse(parts.length > 1 ? parts[1] : '') ?? 0;
     _busy = true;
+    state = state.copyWith(
+      isMoving: true,
+      lastMove: predicted,
+      banner: null,
+    );
+    final minimumAnimation = Future<void>.delayed(
+      _moveAnimationDuration(predicted),
+    );
     try {
       final res = await _ref.read(dioProvider).post(
         ApiEndpoints.moveToken(config.matchId!),
@@ -316,16 +343,66 @@ class GameController extends StateNotifier<GameSession> {
       );
       final data = _payload(res.data);
       final serverState = _asMap(data['state']);
+      final serverMove = MoveResult.fromServer(data, fallbackTokenId: tokenId);
+      await minimumAnimation;
+      if (!mounted) return;
+      if (serverMove.sequence != null) {
+        _lastAnimatedMoveSequence = serverMove.sequence!;
+      }
       if (serverState != null) {
         // Sounds/celebrations (capture, home, win) come from the state diff in
         // _applyServerState, so they fire identically for every player.
         _applyServerState(serverState);
+      } else {
+        state = GameSession(
+          game: originalGame,
+          diceFace: originalGame.lastDice,
+          banner: 'Could not confirm the move — tap the pawn again.',
+        );
       }
     } catch (e, st) {
       AppLogger.e('online move failed', e, st);
+      state = GameSession(
+        game: originalGame,
+        diceFace: originalGame.lastDice,
+        banner: 'Move failed — tap the pawn again.',
+      );
     } finally {
       _busy = false;
     }
+  }
+
+  MoveResult? _moveFromState(Map<String, dynamic> serverState) {
+    final raw = _asMap(serverState['last_move']);
+    if (raw == null) return null;
+    final color = raw['color'] as String?;
+    final token = (raw['token'] as num?)?.toInt();
+    if (color == null || token == null) return null;
+    return MoveResult.fromServer(
+      raw,
+      fallbackTokenId: '${color}_$token',
+    );
+  }
+
+  bool _canAnimateFromCurrentState(MoveResult move) {
+    for (final token in state.game.tokens) {
+      if (token.id == move.movedTokenId) {
+        return token.position == move.fromPosition;
+      }
+    }
+    return false;
+  }
+
+  Duration _moveAnimationDuration(MoveResult move) {
+    final forwardSteps = move.path.isEmpty ? 1 : move.path.length;
+    return AppConstants.tokenStep * forwardSteps +
+        AppConstants.capturedTokenStep * move.maxCapturedReturnSteps +
+        const Duration(milliseconds: 60);
+  }
+
+  Future<void> _playMoveAnimation(MoveResult move) async {
+    state = state.copyWith(isMoving: true, lastMove: move, banner: null);
+    await Future<void>.delayed(_moveAnimationDuration(move));
   }
 
   void _applyServerState(

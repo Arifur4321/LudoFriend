@@ -13,7 +13,8 @@ class TokenMoved implements ShouldBroadcast
     use Dispatchable, InteractsWithSockets, SerializesModels;
 
     /**
-     * @param  array<int,array{color:string,token:int}>  $captured
+     * @param  int[]  $path
+     * @param  array<int,array{color:string,token:int,from:int}>  $captured
      */
     public function __construct(
         public int $matchId,
@@ -21,9 +22,10 @@ class TokenMoved implements ShouldBroadcast
         public int $token,
         public int $from,
         public int $to,
+        public array $path,
         public array $captured = [],
-    ) {
-    }
+        public ?int $sequence = null,
+    ) {}
 
     public function broadcastOn(): array
     {
@@ -43,7 +45,9 @@ class TokenMoved implements ShouldBroadcast
             'token' => $this->token,
             'from' => $this->from,
             'to' => $this->to,
+            'path' => $this->path,
             'captured' => $this->captured,
+            'move_seq' => $this->sequence,
         ];
     }
 }

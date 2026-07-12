@@ -71,6 +71,7 @@ class GameEngineService
             'consecutive_sixes' => 0,
             'finished' => array_fill_keys($turnOrder, false),
             'winner' => null,
+            'last_move' => null,
             'seq' => 0,
         ];
 
@@ -248,7 +249,7 @@ class GameEngineService
      * @param  int  $tokenIndex  0..3 — the token the player wants to move
      * @param  int|null  $clientSeq  optional client-asserted next seq (anti-replay)
      * @return array{
-     *   from:int, to:int, captured:array, finished:bool,
+     *   from:int, to:int, path:array, move_seq:int, captured:array, finished:bool,
      *   extra_turn:bool, winner:?string, turn_passed:bool, state:array
      * }
      *
@@ -289,15 +290,39 @@ class GameEngineService
             // Authoritatively apply.
             $result = $this->rules->applyMove($color, $tokenIndex, $dice, $state['tokens']);
             $state['tokens'] = $result['tokens'];
+            $path = $this->movementPath($result['from'], $result['to']);
 
             // Persist token_moved event.
-            $this->appendEvent($match, $state, $color, 'token_moved', [
+            $moveEvent = $this->appendEvent($match, $state, $color, 'token_moved', [
                 'token' => $tokenIndex,
                 'from' => $result['from'],
                 'to' => $result['to'],
                 'dice' => $dice,
+                'path' => $path,
+                'captured' => $result['captured'],
             ]);
-            broadcast(new TokenMoved($match->id, $color, $tokenIndex, $result['from'], $result['to']));
+            $state['last_move'] = [
+                'move_seq' => $moveEvent->seq,
+                'color' => $color,
+                'token' => $tokenIndex,
+                'from' => $result['from'],
+                'to' => $result['to'],
+                'path' => $path,
+                'captured' => $result['captured'],
+                'finished' => $result['finished'],
+                'extra_turn' => $result['extra_turn'],
+            ];
+
+            broadcast(new TokenMoved(
+                $match->id,
+                $color,
+                $tokenIndex,
+                $result['from'],
+                $result['to'],
+                $path,
+                $result['captured'],
+                $moveEvent->seq,
+            ));
 
             // Capture events.
             if ($result['captured'] !== []) {
@@ -348,6 +373,8 @@ class GameEngineService
             return [
                 'from' => $result['from'],
                 'to' => $result['to'],
+                'path' => $path,
+                'move_seq' => $moveEvent->seq,
                 'captured' => $result['captured'],
                 'finished' => $result['finished'],
                 'extra_turn' => $extraTurn,
@@ -356,6 +383,20 @@ class GameEngineService
                 'state' => $state,
             ];
         });
+    }
+
+    /**
+     * Relative cells traversed by one legal move, excluding the starting cell.
+     *
+     * @return int[]
+     */
+    private function movementPath(int $from, int $to): array
+    {
+        if ($from < 0) {
+            return [0];
+        }
+
+        return range($from + 1, $to);
     }
 
     /* =====================================================================

@@ -187,7 +187,7 @@ class LudoRules
      *     tokens: array<string,int[]>,
      *     from: int,
      *     to: int,
-     *     captured: array<int,array{color:string,token:int}>,
+     *     captured: array<int,array{color:string,token:int,from:int}>,
      *     finished: bool,
      *     extra_turn: bool
      * }
@@ -233,7 +233,11 @@ class LudoRules
                     $oppAbsolute = $this->absolutePos($oppColor, $oppRel);
                     if ($oppAbsolute !== null && $oppAbsolute === $destAbsolute) {
                         $tokens[$oppColor][$i] = $this->relBase;
-                        $captured[] = ['color' => $oppColor, 'token' => $i];
+                        $captured[] = [
+                            'color' => $oppColor,
+                            'token' => $i,
+                            'from' => $oppRel,
+                        ];
                     }
                 }
             }

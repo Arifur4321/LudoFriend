@@ -78,8 +78,12 @@ class GameController extends Controller
 
         return response()->json([
             'data' => [
+                'color' => $color,
+                'token' => (int) $request->integer('token'),
                 'from' => $result['from'],
                 'to' => $result['to'],
+                'path' => $result['path'],
+                'move_seq' => $result['move_seq'],
                 'captured' => $result['captured'],
                 'finished' => $result['finished'],
                 'extra_turn' => $result['extra_turn'],

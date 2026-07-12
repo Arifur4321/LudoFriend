@@ -187,6 +187,10 @@ class GameMoveValidationTest extends TestCase
             ->postJson("/api/v1/matches/{$this->match->id}/move", ['color' => $color, 'token' => 0])
             ->assertOk()
             ->assertJsonPath('data.to', 56)
+            ->assertJsonPath('data.path', [54, 55, 56])
+            ->assertJsonPath('data.move_seq', 1)
+            ->assertJsonPath('data.state.last_move.move_seq', 1)
+            ->assertJsonPath('data.state.last_move.path', [54, 55, 56])
             ->assertJsonPath('data.finished', true);
     }
 

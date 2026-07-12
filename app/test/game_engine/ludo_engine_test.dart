@@ -125,6 +125,7 @@ void main() {
           movable: ['green_0']);
       final m = engine.applyMove(s, 'green_0');
       expect(m.result.capturedTokenIds, contains('red_0'));
+      expect(m.result.capturedFromPositions['red_0'], 10);
       expect(m.state.tokenById('red_0').isInBase, isTrue);
       expect(m.result.grantsExtraTurn, isTrue); // capture => extra turn
     });

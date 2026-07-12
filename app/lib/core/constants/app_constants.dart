@@ -12,6 +12,7 @@ abstract class AppConstants {
   static const Duration pageTransition = Duration(milliseconds: 350);
   static const Duration diceRoll = Duration(milliseconds: 700);
   static const Duration tokenStep = Duration(milliseconds: 160);
+  static const Duration capturedTokenStep = Duration(milliseconds: 45);
   static const Duration botThinkDelay = Duration(milliseconds: 650);
 
   // Secure-storage keys.

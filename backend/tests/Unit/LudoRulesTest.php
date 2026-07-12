@@ -125,6 +125,7 @@ class LudoRulesTest extends TestCase
         $this->assertSame(5, $this->rules->absolutePos('red', $result['to']));
         $this->assertNotEmpty($result['captured']);
         $this->assertSame('green', $result['captured'][0]['color']);
+        $this->assertSame(44, $result['captured'][0]['from']);
         // Captured token is back in base.
         $this->assertSame(-1, $result['tokens']['green'][0]);
         // Capture grants an extra turn.
