@@ -9,13 +9,80 @@
   "settings": "Settings",
   "leaderboard": "Leaderboard",
   "profile": "Profile",
+  "friends": "Friends",
+  "wallet": "Wallet",
+  "store": "Store",
   "howToPlay": "How to Play",
   "continueAsGuest": "Continue as Guest",
   "signIn": "Sign In",
   "createAccount": "Create Account",
-  "roll": "Roll",
-  "yourTurn": "Your turn",
-  "rematch": "Rematch",
   "home": "Home",
-  "noConnection": "No connection"
+  "ok": "OK",
+  "cancel": "Cancel",
+  "retry": "Retry",
+  "close": "Close",
+  "loading": "Loading…",
+  "roll": "Roll",
+  "rematch": "Rematch",
+  "yourTurn": "Your turn",
+  "yourTurnTapDice": "Your turn — tap the dice!",
+  "rollTheDice": "Roll the dice",
+  "selectAToken": "Select a token",
+  "tapGlowingToken": "Tap a glowing token",
+  "rolling": "Rolling…",
+  "gameOver": "Game over",
+  "waitingForPlayer": "Waiting for player",
+  "matchStarted": "Match started",
+  "matchFinished": "Match finished",
+  "noLegalMove": "No legal move",
+  "playerDisconnected": "Player disconnected",
+  "reconnecting": "Reconnecting…",
+  "connectionRestored": "Connection restored",
+  "noConnection": "No connection",
+  "messageFailedToSend": "Message failed to send",
+  "inviteSent": "Invite sent",
+  "playerJoined": "Player joined",
+  "playerLeft": "Player left",
+  "chatHint": "Message…",
+  "chatEmpty": "Say hi to your table 👋",
+  "audioHaptics": "Audio & Haptics",
+  "soundEffects": "Sound effects",
+  "music": "Music",
+  "vibration": "Vibration",
+  "gameplay": "Gameplay",
+  "turnAlerts": "Turn alerts",
+  "turnAlertsSubtitle": "Sound + buzz when it is your turn",
+  "inGameChat": "In-game chat",
+  "emojiReactions": "Emoji reactions",
+  "appSection": "App",
+  "language": "Language",
+  "about": "About",
+  "legal": "Legal",
+  "privacyPolicy": "Privacy Policy",
+  "termsOfService": "Terms of Service",
+  "dataDeletion": "Data & account deletion",
+  "playerThinking": "{name} is thinking…",
+  "@playerThinking": {
+    "placeholders": {
+      "name": { "type": "String" }
+    }
+  },
+  "playerTurn": "Turn: {name}",
+  "@playerTurn": {
+    "placeholders": {
+      "name": { "type": "String" }
+    }
+  },
+  "playerMove": "Move: {name}",
+  "@playerMove": {
+    "placeholders": {
+      "name": { "type": "String" }
+    }
+  },
+  "tokensHome": "{count, plural, =0{No tokens home} one{1 token home} other{{count} tokens home}}",
+  "@tokensHome": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  }
 }

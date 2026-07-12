@@ -18,7 +18,9 @@ import '../../../services/realtime/realtime_match_service.dart';
 import '../../../services/realtime/websocket_service.dart';
 import '../../auth/application/auth_controller.dart';
 import '../../settings/application/settings_controller.dart';
+import '../data/match_chat_repository.dart';
 import 'celebration.dart';
+import 'emoji_reactions.dart';
 import 'game_chat_state.dart';
 import 'game_config.dart';
 import 'game_session.dart';
@@ -113,6 +115,8 @@ class GameController extends StateNotifier<GameSession> {
         _ref.read(realtimeMatchServiceProvider).leaveMatch(id);
       }
       _ref.read(currentMatchIdProvider.notifier).state = null;
+      _ref.read(gameChatProvider.notifier).clear();
+      _ref.read(emojiReactionsProvider.notifier).clear();
     }
     super.dispose();
   }
@@ -235,6 +239,9 @@ class GameController extends StateNotifier<GameSession> {
 
   Future<void> _initOnline() async {
     _ref.read(currentMatchIdProvider.notifier).state = config.matchId;
+    // Start from a clean slate so a previous match's chat/emoji never leak in.
+    _ref.read(gameChatProvider.notifier).clear();
+    _ref.read(emojiReactionsProvider.notifier).clear();
     final realtime = _ref.read(realtimeMatchServiceProvider);
     _rtSub = realtime.events.listen(_onRealtimeEvent);
     final matchId = int.tryParse(config.matchId ?? '');
@@ -242,6 +249,7 @@ class GameController extends StateNotifier<GameSession> {
       await realtime.joinMatch(matchId);
     }
     await _refreshState();
+    await _loadChatHistory();
     // Realtime remains the fast path. This lightweight authoritative refresh
     // is the safety net for a dropped broadcast, a temporarily unavailable
     // Reverb worker, or a phone that switched networks while the opponent was
@@ -253,6 +261,22 @@ class GameController extends StateNotifier<GameSession> {
         (_) => _refreshState(),
       );
     }
+  }
+
+  /// One-shot recent-history restore so re-entering a match shows the last
+  /// messages; de-duplicated by id against anything already live.
+  Future<void> _loadChatHistory() async {
+    final matchId = config.matchId;
+    if (matchId == null) return;
+    final myId = _ref.read(authControllerProvider).valueOrNull?.id;
+    final res = await _ref
+        .read(matchChatRepositoryProvider)
+        .history(matchId, myUserId: myId);
+    if (!mounted) return;
+    res.when(
+      ok: (msgs) => _ref.read(gameChatProvider.notifier).loadHistory(msgs),
+      err: (_) {},
+    );
   }
 
   Future<void> _refreshState() async {
@@ -584,25 +608,34 @@ class GameController extends StateNotifier<GameSession> {
         break;
       case 'chat.message':
         if (_ref.read(settingsControllerProvider).chat) {
-          final myId = _ref.read(authControllerProvider).valueOrNull?.id;
-          final mine = myId != null && ev.data['user_id']?.toString() == myId;
+          final id = (ev.data['id'] as num?)?.toInt();
           final body = ev.data['body'] as String? ?? '';
-          if (body.isEmpty) break;
-          if (mine) {
-            _ref.read(gameChatProvider.notifier).addLocal(body);
-          } else {
-            _ref.read(gameChatProvider.notifier).addRemote(
-                  ev.data['name'] as String? ?? 'Player',
-                  body,
-                );
-          }
+          if (id == null || body.isEmpty) break;
+          final myId = _ref.read(authControllerProvider).valueOrNull?.id;
+          // De-duplicated + reconciled with any optimistic bubble by the store.
+          _ref.read(gameChatProvider.notifier).applyServer(
+                id: id,
+                clientId: ev.data['client_id'] as String?,
+                sender: ev.data['name'] as String? ?? 'Player',
+                avatarUrl: ev.data['avatar'] as String?,
+                color: ev.data['color'] as String?,
+                text: body,
+                isMe: myId != null && ev.data['user_id']?.toString() == myId,
+              );
         }
         break;
       case 'chat.emoji':
         if (_ref.read(settingsControllerProvider).emoji) {
+          final id = ev.data['id'] as String?;
           final emoji = ev.data['emoji'] as String? ?? '';
-          if (emoji.isNotEmpty) {
-            _ref.read(incomingEmojiProvider.notifier).state = emoji;
+          if (id != null && id.isNotEmpty && emoji.isNotEmpty) {
+            // De-duplicated by id so a re-delivered event never plays twice.
+            _ref.read(emojiReactionsProvider.notifier).add(EmojiReaction(
+                  id: id,
+                  emoji: emoji,
+                  sender: ev.data['name'] as String? ?? '',
+                  color: ev.data['color'] as String?,
+                ));
           }
         }
         break;

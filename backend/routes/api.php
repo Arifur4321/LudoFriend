@@ -120,10 +120,6 @@ Route::prefix('v1')->group(function () {
             Route::post('matches/{match}/roll', [GameController::class, 'roll']);
             Route::post('matches/{match}/move', [GameController::class, 'move']);
 
-            // In-match chat + emoji reactions.
-            Route::post('matches/{match}/chat', [ChatController::class, 'message']);
-            Route::post('matches/{match}/emoji', [ChatController::class, 'emoji']);
-
             // Friend "come play" room invite.
             Route::post('friends/invite-to-room', [FriendController::class, 'inviteToRoom']);
         });
@@ -136,6 +132,16 @@ Route::prefix('v1')->group(function () {
             Route::get('matches/{match}/state', [GameController::class, 'state']);
             Route::post('matches/{match}/reconnect', [GameController::class, 'reconnect']);
         });
+
+        // In-match chat + emoji. Dedicated per-user limiters keep chat/emoji
+        // spam from eating the game-action budget; history reads get a higher
+        // allowance. All three require a seat in the match (MatchPolicy@view).
+        Route::get('matches/{match}/chat', [ChatController::class, 'history'])
+            ->middleware('throttle:60,1');
+        Route::post('matches/{match}/chat', [ChatController::class, 'message'])
+            ->middleware('throttle:chat');
+        Route::post('matches/{match}/emoji', [ChatController::class, 'emoji'])
+            ->middleware('throttle:emoji');
 
         /* -----------------------------------------------------------
          | Admin-only back office

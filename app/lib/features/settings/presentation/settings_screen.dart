@@ -4,17 +4,28 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/config/app_config.dart';
 import '../../../core/router/app_routes.dart';
+import '../../../l10n/generated/app_localizations.dart';
 import '../../../shared/theme/app_colors.dart';
 import '../../../shared/theme/app_text_styles.dart';
 import '../../../shared/utils/external_links.dart';
 import '../../../shared/widgets/app_background.dart';
 import '../application/settings_controller.dart';
 
-const _languages = {
+/// Every supported UI language, shown in its own native form. The keys are the
+/// locale codes persisted locally; the values are never translated (a language
+/// picker always reads best in-script).
+const Map<String, String> kSupportedLanguages = {
   'en': 'English',
+  'de': 'Deutsch',
+  'nl': 'Nederlands',
+  'es': 'Español',
   'it': 'Italiano',
+  'pt': 'Português',
   'bn': 'বাংলা',
   'hi': 'हिन्दी',
+  'zh': '简体中文',
+  'ko': '한국어',
+  'ja': '日本語',
 };
 
 class SettingsScreen extends ConsumerWidget {
@@ -22,70 +33,75 @@ class SettingsScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final l = AppLocalizations.of(context);
     final s = ref.watch(settingsControllerProvider);
     final c = ref.read(settingsControllerProvider.notifier);
 
+    // Guard against a persisted code that is no longer supported.
+    final currentLocale =
+        kSupportedLanguages.containsKey(s.localeCode) ? s.localeCode : 'en';
+
     return Scaffold(
-      appBar: AppBar(title: const Text('Settings')),
+      appBar: AppBar(title: Text(l.settings)),
       extendBodyBehindAppBar: true,
       body: AppBackground(
         child: SafeArea(
           child: ListView(
             padding: const EdgeInsets.fromLTRB(20, 80, 20, 20),
             children: [
-              _SectionLabel('Audio & Haptics'),
+              _SectionLabel(l.audioHaptics),
               _Group(children: [
                 _SwitchTile(
                   icon: Icons.volume_up_rounded,
-                  title: 'Sound effects',
+                  title: l.soundEffects,
                   value: s.sound,
                   onChanged: (_) => c.toggleSound(),
                 ),
                 _SwitchTile(
                   icon: Icons.music_note_rounded,
-                  title: 'Music',
+                  title: l.music,
                   value: s.music,
                   onChanged: (_) => c.toggleMusic(),
                 ),
                 _SwitchTile(
                   icon: Icons.vibration_rounded,
-                  title: 'Vibration',
+                  title: l.vibration,
                   value: s.vibration,
                   onChanged: (_) => c.toggleVibration(),
                 ),
               ]),
-              _SectionLabel('Gameplay'),
+              _SectionLabel(l.gameplay),
               _Group(children: [
                 _SwitchTile(
                   icon: Icons.notifications_active_rounded,
-                  title: 'Turn alerts',
-                  subtitle: 'Sound + buzz when it is your turn',
+                  title: l.turnAlerts,
+                  subtitle: l.turnAlertsSubtitle,
                   value: s.turnAlerts,
                   onChanged: (_) => c.toggleTurnAlerts(),
                 ),
                 _SwitchTile(
                   icon: Icons.chat_bubble_rounded,
-                  title: 'In-game chat',
+                  title: l.inGameChat,
                   value: s.chat,
                   onChanged: (_) => c.toggleChat(),
                 ),
                 _SwitchTile(
                   icon: Icons.emoji_emotions_rounded,
-                  title: 'Emoji reactions',
+                  title: l.emojiReactions,
                   value: s.emoji,
                   onChanged: (_) => c.toggleEmoji(),
                 ),
               ]),
-              _SectionLabel('App'),
+              _SectionLabel(l.appSection),
               _Group(children: [
                 ListTile(
                   leading: const Icon(Icons.language_rounded,
                       color: AppColors.primary),
-                  title: Text('Language', style: AppTextStyles.body),
+                  title: Text(l.language, style: AppTextStyles.body),
                   trailing: DropdownButton<String>(
-                    value: s.localeCode,
+                    value: currentLocale,
                     underline: const SizedBox.shrink(),
-                    items: _languages.entries
+                    items: kSupportedLanguages.entries
                         .map((e) => DropdownMenuItem(
                             value: e.key, child: Text(e.value)))
                         .toList(),
@@ -97,7 +113,7 @@ class SettingsScreen extends ConsumerWidget {
                 ListTile(
                   leading: const Icon(Icons.help_outline_rounded,
                       color: AppColors.primary),
-                  title: Text('How to play', style: AppTextStyles.body),
+                  title: Text(l.howToPlay, style: AppTextStyles.body),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () => context.push(AppRoutes.help),
                 ),
@@ -106,17 +122,17 @@ class SettingsScreen extends ConsumerWidget {
                 ListTile(
                   leading: const Icon(Icons.info_outline_rounded,
                       color: AppColors.primary),
-                  title: Text('About', style: AppTextStyles.body),
+                  title: Text(l.about, style: AppTextStyles.body),
                   subtitle: Text('Ludo Friends · v1.0.0',
                       style: AppTextStyles.bodyMuted),
                 ),
               ]),
-              _SectionLabel('Legal'),
+              _SectionLabel(l.legal),
               _Group(children: [
                 ListTile(
                   leading: const Icon(Icons.privacy_tip_outlined,
                       color: AppColors.primary),
-                  title: Text('Privacy Policy', style: AppTextStyles.body),
+                  title: Text(l.privacyPolicy, style: AppTextStyles.body),
                   trailing: const Icon(Icons.open_in_new_rounded, size: 18),
                   onTap: () =>
                       openExternalUrl(context, AppConfig.privacyPolicyUrl),
@@ -124,15 +140,14 @@ class SettingsScreen extends ConsumerWidget {
                 ListTile(
                   leading: const Icon(Icons.description_outlined,
                       color: AppColors.primary),
-                  title: Text('Terms of Service', style: AppTextStyles.body),
+                  title: Text(l.termsOfService, style: AppTextStyles.body),
                   trailing: const Icon(Icons.open_in_new_rounded, size: 18),
                   onTap: () => openExternalUrl(context, AppConfig.termsUrl),
                 ),
                 ListTile(
                   leading: const Icon(Icons.delete_outline_rounded,
                       color: AppColors.primary),
-                  title: Text('Data & account deletion',
-                      style: AppTextStyles.body),
+                  title: Text(l.dataDeletion, style: AppTextStyles.body),
                   trailing: const Icon(Icons.open_in_new_rounded, size: 18),
                   onTap: () =>
                       openExternalUrl(context, AppConfig.dataDeletionUrl),
@@ -177,8 +192,9 @@ class _SwitchTile extends StatelessWidget {
     return SwitchListTile(
       secondary: Icon(icon, color: AppColors.primary),
       title: Text(title, style: AppTextStyles.body),
-      subtitle:
-          subtitle != null ? Text(subtitle!, style: AppTextStyles.bodyMuted) : null,
+      subtitle: subtitle != null
+          ? Text(subtitle!, style: AppTextStyles.bodyMuted)
+          : null,
       value: value,
       activeColor: AppColors.primary,
       onChanged: onChanged,

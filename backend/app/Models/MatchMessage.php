@@ -17,10 +17,18 @@ class MatchMessage extends Model
     protected $fillable = [
         'match_id',
         'user_id',
+        'client_id',
         'color',
         'type',
         'body',
     ];
+
+    protected function casts(): array
+    {
+        return [
+            'created_at' => 'datetime',
+        ];
+    }
 
     public function matchup(): BelongsTo
     {

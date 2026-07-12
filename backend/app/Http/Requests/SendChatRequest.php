@@ -15,6 +15,9 @@ class SendChatRequest extends FormRequest
     {
         return [
             'body' => ['required', 'string', 'max:'.(int) config('chat.max_length', 200)],
+            // Client-generated idempotency key for one physical send. A retry or
+            // rapid double-tap with the same id resolves to the same message.
+            'client_id' => ['nullable', 'string', 'max:64', 'regex:/^[A-Za-z0-9_-]+$/'],
         ];
     }
 }

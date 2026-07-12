@@ -66,6 +66,8 @@ class AppServiceProvider extends ServiceProvider
         $authLimit = (int) env('RATE_LIMIT_AUTH', 6);
         $gameLimit = (int) env('RATE_LIMIT_GAME', 30);
         $apiLimit = (int) env('RATE_LIMIT_API', 60);
+        $chatLimit = (int) env('RATE_LIMIT_CHAT', config('chat.rate_per_minute', 20));
+        $emojiLimit = (int) env('RATE_LIMIT_EMOJI', config('chat.emoji_rate_per_minute', 15));
 
         RateLimiter::for('auth', fn (Request $request) => Limit::perMinute($authLimit)
             ->by($request->ip()));
@@ -74,6 +76,14 @@ class AppServiceProvider extends ServiceProvider
             ->by(optional($request->user())->id ?: $request->ip()));
 
         RateLimiter::for('api', fn (Request $request) => Limit::perMinute($apiLimit)
+            ->by(optional($request->user())->id ?: $request->ip()));
+
+        // Dedicated chat/emoji limiters, keyed per authenticated user (guests
+        // included) so one spammer cannot flood a table or starve game actions.
+        RateLimiter::for('chat', fn (Request $request) => Limit::perMinute($chatLimit)
+            ->by(optional($request->user())->id ?: $request->ip()));
+
+        RateLimiter::for('emoji', fn (Request $request) => Limit::perMinute($emojiLimit)
             ->by(optional($request->user())->id ?: $request->ip()));
     }
 }

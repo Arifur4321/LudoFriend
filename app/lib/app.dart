@@ -1,14 +1,15 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'core/router/app_router.dart';
 import 'features/friends/application/invite_listener.dart';
 import 'features/settings/application/settings_controller.dart';
+import 'l10n/generated/app_localizations.dart';
 import 'shared/theme/app_theme.dart';
 
-/// Root widget. Localization is wired (delegates + supported locales + live
-/// locale switching); visible strings can migrate to `lib/l10n/*.arb` over time.
+/// Root widget. Localization is fully wired: the generated [AppLocalizations]
+/// delegate is registered, all supported locales are advertised, and the active
+/// locale switches live from the (locally persisted) Settings selection.
 class LudoFriendsApp extends ConsumerWidget {
   const LudoFriendsApp({super.key});
 
@@ -26,17 +27,18 @@ class LudoFriendsApp extends ConsumerWidget {
       builder: (context, child) =>
           InviteListener(child: child ?? const SizedBox.shrink()),
       locale: Locale(localeCode),
-      supportedLocales: const [
-        Locale('en'),
-        Locale('it'),
-        Locale('bn'),
-        Locale('hi'),
-      ],
-      localizationsDelegates: const [
-        GlobalMaterialLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-        GlobalCupertinoLocalizations.delegate,
-      ],
+      // Delegates + locales come from the generated class, so they always match
+      // the .arb files (adding a locale is just adding an .arb).
+      supportedLocales: AppLocalizations.supportedLocales,
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      // Safe fallback: an unknown/unsupported code resolves to English rather
+      // than the device locale, so users never see raw keys or a wrong language.
+      localeResolutionCallback: (locale, supported) {
+        for (final s in supported) {
+          if (s.languageCode == locale?.languageCode) return s;
+        }
+        return const Locale('en');
+      },
     );
   }
 }

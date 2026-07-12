@@ -6,12 +6,13 @@ import '../../../core/router/app_routes.dart';
 import '../../../game_engine/models/game_player.dart';
 import '../../../game_engine/models/game_status.dart';
 import '../../../game_engine/models/ludo_color.dart';
+import '../../../l10n/generated/app_localizations.dart';
 import '../../../shared/theme/app_colors.dart';
 import '../../../shared/theme/board_theme.dart';
 import '../../../shared/widgets/app_background.dart';
 import '../../settings/application/settings_controller.dart';
 import '../application/celebration.dart';
-import '../application/game_chat_state.dart';
+import '../application/emoji_reactions.dart';
 import '../application/game_config.dart';
 import '../application/game_controller.dart';
 import '../application/game_session.dart';
@@ -45,12 +46,16 @@ class GameScreen extends ConsumerWidget {
     final theme = ref.watch(activeBoardThemeProvider);
     final settings = ref.watch(settingsControllerProvider);
 
-    // Float incoming emoji reactions over the board.
-    ref.listen<String?>(incomingEmojiProvider, (prev, next) {
-      if (next != null && context.mounted) {
-        flashEmoji(context, next);
-        Future.microtask(
-            () => ref.read(incomingEmojiProvider.notifier).state = null);
+    // Float incoming emoji reactions over the board. The controller de-dupes by
+    // id and self-expires; here we flash only the reactions newly added since
+    // the last build, so each one plays exactly once and several can co-exist.
+    ref.listen<List<EmojiReaction>>(emojiReactionsProvider, (prev, next) {
+      if (!context.mounted) return;
+      final seen = {for (final r in (prev ?? const <EmojiReaction>[])) r.id};
+      for (final r in next) {
+        if (!seen.contains(r.id)) {
+          flashEmoji(context, r.emoji, sender: r.sender);
+        }
       }
     });
 
@@ -333,22 +338,24 @@ class _StatusStrip extends ConsumerWidget {
     final current = game.currentPlayer;
     final color = AppColors.of(current.color);
 
+    final l = AppLocalizations.of(context);
     String status;
     if (game.isFinished) {
-      status = 'Game over';
+      status = l.gameOver;
     } else if (session.isRolling) {
-      status = 'Rolling…';
+      status = l.rolling;
     } else if (session.banner?.trim().isNotEmpty == true) {
+      // Dynamic roll banners are produced by the controller; localizing their
+      // templated values is a follow-up (see report).
       status = session.banner!;
     } else if (current.isBot) {
-      status = '${current.name} is thinking…';
+      status = l.playerThinking(current.name);
     } else if (game.status == GameStatus.awaitingMove) {
       status =
-          current.isHuman ? 'Tap a glowing token' : "${current.name}'s move";
+          current.isHuman ? l.tapGlowingToken : l.playerMove(current.name);
     } else {
-      status = current.isHuman
-          ? 'Your turn — tap the dice!'
-          : "${current.name}'s turn";
+      status =
+          current.isHuman ? l.yourTurnTapDice : l.playerTurn(current.name);
     }
 
     final showTimer = current.isHuman &&

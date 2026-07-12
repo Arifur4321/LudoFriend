@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../l10n/generated/app_localizations.dart';
 import '../../../../shared/theme/app_colors.dart';
+import '../../application/emoji_reactions.dart';
 import '../../application/game_chat_state.dart';
 import '../../data/match_chat_repository.dart';
 
@@ -18,8 +20,9 @@ Future<void> showGameChat(BuildContext context) {
   );
 }
 
-/// Opens the quick-emoji picker; a chosen emoji is sent (online) or echoed
-/// locally, then floats over the board.
+/// Opens the quick-emoji picker; a chosen emoji is sent (online) or floated
+/// locally (offline). Online reactions float for everyone via the server echo
+/// (with a stable id + sender), so the sender never sees a double.
 Future<void> showGameEmojis(BuildContext context, WidgetRef ref) {
   return showModalBottomSheet<void>(
     context: context,
@@ -41,11 +44,15 @@ Future<void> showGameEmojis(BuildContext context, WidgetRef ref) {
                 final matchId = ref.read(currentMatchIdProvider);
                 Navigator.pop(ctx);
                 if (matchId != null) {
-                  // Online: the server echo floats it (avoids a double flash).
                   ref.read(matchChatRepositoryProvider).sendEmoji(matchId, e);
                 } else {
-                  ref.read(gameChatProvider.notifier).addLocal(e, isEmoji: true);
-                  flashEmoji(context, e);
+                  ref.read(emojiReactionsProvider.notifier).add(
+                        EmojiReaction(
+                          id: 'local_${DateTime.now().microsecondsSinceEpoch}',
+                          emoji: e,
+                          sender: 'You',
+                        ),
+                      );
                 }
               },
               child: Padding(
@@ -60,29 +67,46 @@ Future<void> showGameEmojis(BuildContext context, WidgetRef ref) {
 }
 
 /// Floats a big emoji up over the board, then removes itself. Self-contained
-/// (no controller lifecycle) so it is safe to fire and forget.
-void flashEmoji(BuildContext context, String emoji) {
+/// (no controller lifecycle) so it is safe to fire and forget; several can run
+/// at once without overwriting one another.
+void flashEmoji(BuildContext context, String emoji, {String sender = ''}) {
   final overlay = Overlay.maybeOf(context);
   if (overlay == null) return;
+  final size = MediaQuery.of(context).size;
+  // Small deterministic horizontal jitter so simultaneous reactions fan out.
+  final jitter = ((emoji.hashCode ^ sender.hashCode) % 120) - 60;
   late OverlayEntry entry;
   entry = OverlayEntry(
     builder: (ctx) {
-      final size = MediaQuery.of(ctx).size;
       return Positioned(
-        left: size.width / 2 - 40,
+        left: size.width / 2 - 40 + jitter,
         top: size.height * 0.52,
         child: IgnorePointer(
           child: TweenAnimationBuilder<double>(
             tween: Tween(begin: 0, end: 1),
-            duration: const Duration(milliseconds: 1100),
+            duration: const Duration(milliseconds: 1400),
             onEnd: entry.remove,
             builder: (ctx, t, _) => Opacity(
               opacity: (1 - t).clamp(0.0, 1.0),
               child: Transform.translate(
-                offset: Offset(0, -140 * t),
+                offset: Offset(0, -150 * t),
                 child: Transform.scale(
                   scale: 0.6 + t * 1.1,
-                  child: Text(emoji, style: const TextStyle(fontSize: 68)),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(emoji, style: const TextStyle(fontSize: 64)),
+                      if (sender.isNotEmpty)
+                        Text(
+                          sender,
+                          style: const TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white,
+                          ),
+                        ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -103,27 +127,50 @@ class _ChatSheet extends ConsumerStatefulWidget {
 
 class _ChatSheetState extends ConsumerState<_ChatSheet> {
   final TextEditingController _text = TextEditingController();
+  final ScrollController _scroll = ScrollController();
+  DateTime? _lastSend;
 
   @override
   void dispose() {
     _text.dispose();
+    _scroll.dispose();
     super.dispose();
+  }
+
+  void _scrollToNewest() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scroll.hasClients) _scroll.jumpTo(0); // reverse:true → 0 is newest
+    });
   }
 
   void _send(String value) {
     final v = value.trim();
     if (v.isEmpty) return;
+    // Debounce accidental double-fires (rapid Send taps / quick-phrase taps).
+    final now = DateTime.now();
+    if (_lastSend != null && now.difference(_lastSend!).inMilliseconds < 400) {
+      return;
+    }
+    _lastSend = now;
+
     final matchId = ref.read(currentMatchIdProvider);
+    final chat = ref.read(gameChatProvider.notifier);
     if (matchId != null) {
-      ref.read(matchChatRepositoryProvider).sendMessage(matchId, v);
+      final repo = ref.read(matchChatRepositoryProvider);
+      final clientId = chat.addOptimistic(v);
+      repo.sendMessage(matchId, v, clientId: clientId).then(
+            (res) => res.when(ok: (_) {}, err: (_) => chat.markFailed(clientId)),
+          );
     } else {
-      ref.read(gameChatProvider.notifier).addLocal(v);
+      chat.addLocal(v);
     }
     _text.clear();
+    _scrollToNewest();
   }
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
     final messages = ref.watch(gameChatProvider);
     return Container(
       decoration: const BoxDecoration(
@@ -144,43 +191,19 @@ class _ChatSheetState extends ConsumerState<_ChatSheet> {
           ConstrainedBox(
             constraints: const BoxConstraints(maxHeight: 240),
             child: messages.isEmpty
-                ? const Padding(
-                    padding: EdgeInsets.all(24),
-                    child: Text('Say hi to your table 👋',
-                        style: TextStyle(color: AppColors.inkSoft)),
+                ? Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Text(l.chatEmpty,
+                        style: const TextStyle(color: AppColors.inkSoft)),
                   )
                 : ListView.builder(
+                    controller: _scroll,
                     shrinkWrap: true,
                     reverse: true,
                     itemCount: messages.length,
                     itemBuilder: (ctx, i) {
                       final m = messages[messages.length - 1 - i];
-                      return Align(
-                        alignment: m.isMe
-                            ? Alignment.centerRight
-                            : Alignment.centerLeft,
-                        child: Container(
-                          margin: const EdgeInsets.symmetric(vertical: 3),
-                          padding: EdgeInsets.symmetric(
-                              horizontal: 12, vertical: m.isEmoji ? 4 : 8),
-                          decoration: BoxDecoration(
-                            color: m.isMe
-                                ? AppColors.primary
-                                : AppColors.surfaceMuted,
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                          child: Text(
-                            m.isEmoji
-                                ? m.text
-                                : (m.isMe ? m.text : '${m.sender}: ${m.text}'),
-                            style: TextStyle(
-                              color: m.isMe ? Colors.white : AppColors.ink,
-                              fontSize: m.isEmoji ? 26 : 14,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                      );
+                      return _MessageBubble(message: m);
                     },
                   ),
           ),
@@ -209,8 +232,14 @@ class _ChatSheetState extends ConsumerState<_ChatSheet> {
                   controller: _text,
                   textInputAction: TextInputAction.send,
                   onSubmitted: _send,
+                  maxLength: 200,
+                  buildCounter: (BuildContext context,
+                          {required int currentLength,
+                          required int? maxLength,
+                          required bool isFocused}) =>
+                      null, // hide the character counter
                   decoration: InputDecoration(
-                    hintText: 'Message…',
+                    hintText: l.chatHint,
                     filled: true,
                     fillColor: AppColors.surfaceMuted,
                     contentPadding: const EdgeInsets.symmetric(
@@ -230,6 +259,121 @@ class _ChatSheetState extends ConsumerState<_ChatSheet> {
             ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _MessageBubble extends StatelessWidget {
+  const _MessageBubble({required this.message});
+
+  final ChatMessage message;
+
+  @override
+  Widget build(BuildContext context) {
+    final m = message;
+    // Bound the bubble so long messages wrap instead of overflowing the sheet.
+    final maxWidth = MediaQuery.of(context).size.width * 0.68;
+
+    final bubble = ConstrainedBox(
+      constraints: BoxConstraints(maxWidth: maxWidth),
+      child: Container(
+        margin: const EdgeInsets.symmetric(vertical: 3),
+        padding:
+            EdgeInsets.symmetric(horizontal: 12, vertical: m.isEmoji ? 4 : 8),
+        decoration: BoxDecoration(
+          color:
+              m.isMe && !m.failed ? AppColors.primary : AppColors.surfaceMuted,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Text(
+          m.isEmoji ? m.text : (m.isMe ? m.text : '${m.sender}: ${m.text}'),
+          softWrap: true,
+          style: TextStyle(
+            color: m.isMe && !m.failed ? Colors.white : AppColors.ink,
+            fontSize: m.isEmoji ? 26 : 14,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ),
+    );
+
+    final statusIcon = (m.pending || m.failed)
+        ? Padding(
+            padding: const EdgeInsets.only(left: 4),
+            child: Icon(
+              m.failed ? Icons.error_outline_rounded : Icons.schedule_rounded,
+              size: 14,
+              color: m.failed ? Colors.redAccent : AppColors.inkSoft,
+            ),
+          )
+        : null;
+
+    if (m.isMe) {
+      return Align(
+        alignment: Alignment.centerRight,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [bubble, if (statusIcon != null) statusIcon],
+        ),
+      );
+    }
+
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          _SenderAvatar(sender: m.sender, avatarUrl: m.avatarUrl, color: m.color),
+          const SizedBox(width: 6),
+          bubble,
+        ],
+      ),
+    );
+  }
+}
+
+/// A compact sender avatar: the player photo when available, otherwise a
+/// seat-coloured initial. The network image degrades to the initial on error,
+/// so it never breaks the row.
+class _SenderAvatar extends StatelessWidget {
+  const _SenderAvatar({required this.sender, this.avatarUrl, this.color});
+
+  final String sender;
+  final String? avatarUrl;
+  final String? color;
+
+  Color _seatColor() {
+    switch (color) {
+      case 'red':
+        return const Color(0xFFE53935);
+      case 'green':
+        return const Color(0xFF2E7D32);
+      case 'yellow':
+        return const Color(0xFFF9A825);
+      case 'blue':
+        return const Color(0xFF1565C0);
+      default:
+        return AppColors.primary;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final name = sender.trim();
+    final initial = name.isNotEmpty ? name.substring(0, 1).toUpperCase() : '?';
+    final url = avatarUrl;
+    return CircleAvatar(
+      radius: 12,
+      backgroundColor: _seatColor(),
+      foregroundImage:
+          (url != null && url.isNotEmpty) ? NetworkImage(url) : null,
+      child: Text(
+        initial,
+        style: const TextStyle(
+            fontSize: 11, color: Colors.white, fontWeight: FontWeight.w700),
       ),
     );
   }

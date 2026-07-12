@@ -18,6 +18,14 @@ return [
 
     'presence_ttl' => 60, // seconds
 
+    // Most recent messages returned per history page (hard cap on `limit`).
+    'history_max' => 50,
+
+    // Per-user, per-minute send limits (overridable via RATE_LIMIT_CHAT /
+    // RATE_LIMIT_EMOJI env). Applied by the 'chat' / 'emoji' rate limiters.
+    'rate_per_minute' => 20,
+    'emoji_rate_per_minute' => 15,
+
     'quick_phrases' => [
         'Hi! 👋',
         'Good luck!',

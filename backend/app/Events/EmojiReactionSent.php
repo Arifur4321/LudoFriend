@@ -10,6 +10,10 @@ use Illuminate\Queue\SerializesModels;
 
 /**
  * An ephemeral emoji reaction floated over the board. Not persisted.
+ *
+ * Carries a stable `id` (a per-send uuid) so every client — including the
+ * sender — can de-duplicate the reaction and never play it twice. `name`/`color`
+ * identify the sender authoritatively (from the seated player, not the client).
  */
 class EmojiReactionSent implements ShouldBroadcast
 {
@@ -17,7 +21,9 @@ class EmojiReactionSent implements ShouldBroadcast
 
     public function __construct(
         public int $matchId,
+        public string $id,
         public ?int $userId,
+        public ?string $name,
         public ?string $color,
         public string $emoji,
     ) {
@@ -37,7 +43,9 @@ class EmojiReactionSent implements ShouldBroadcast
     {
         return [
             'match_id' => $this->matchId,
+            'id' => $this->id,
             'user_id' => $this->userId,
+            'name' => $this->name,
             'color' => $this->color,
             'emoji' => $this->emoji,
         ];
