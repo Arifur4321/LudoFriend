@@ -43,7 +43,11 @@ class GameController extends Controller
         $this->authorize('act', [$match, $color]);
 
         try {
-            $result = $this->engine->roll($match, $color);
+            $result = $this->engine->roll(
+                $match,
+                $color,
+                actionId: $request->string('action_id')->toString() ?: null,
+            );
         } catch (RuntimeException $e) {
             return response()->json(['message' => $e->getMessage()], 422);
         }
@@ -54,6 +58,7 @@ class GameController extends Controller
                 'forfeited' => $result['forfeited'],
                 'legal_moves' => $result['legal_moves'],
                 'turn_passed' => $result['turn_passed'],
+                'replayed' => $result['replayed'],
                 'state' => $result['state'],
             ],
         ]);

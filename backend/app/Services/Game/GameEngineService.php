@@ -72,6 +72,7 @@ class GameEngineService
             'finished' => array_fill_keys($turnOrder, false),
             'winner' => null,
             'last_move' => null,
+            'last_roll' => null,
             'seq' => 0,
         ];
 
@@ -137,18 +138,44 @@ class GameEngineService
      *   forfeited:bool,
      *   legal_moves:array,
      *   turn_passed:bool,
+     *   replayed:bool,
      *   state:array
      * }
      *
      * @throws RuntimeException on wrong turn / wrong phase.
      */
-    public function roll(Matchup $match, string $color, ?int $forcedDice = null): array
-    {
+    public function roll(
+        Matchup $match,
+        string $color,
+        ?int $forcedDice = null,
+        ?string $actionId = null,
+    ): array {
         $color = strtolower($color);
 
-        return DB::transaction(function () use ($match, $color, $forcedDice) {
+        return DB::transaction(function () use ($match, $color, $forcedDice, $actionId) {
             $row = MatchState::where('match_id', $match->id)->lockForUpdate()->first();
             $state = $row->state;
+
+            // A transport retry must not become a second dice roll. Only replay
+            // the receipt while it still describes the current authoritative
+            // state; after any later action changes seq, normal turn/phase
+            // validation applies again.
+            $lastRoll = $state['last_roll'] ?? null;
+            if ($actionId !== null
+                && is_array($lastRoll)
+                && isset($lastRoll['action_hash'])
+                && hash_equals((string) $lastRoll['action_hash'], hash('sha256', $actionId))
+                && ($lastRoll['color'] ?? null) === $color
+                && (int) ($lastRoll['state_seq'] ?? -1) === (int) $state['seq']) {
+                return [
+                    'dice' => (int) $lastRoll['dice'],
+                    'forfeited' => (bool) $lastRoll['forfeited'],
+                    'legal_moves' => $lastRoll['legal_moves'] ?? [],
+                    'turn_passed' => (bool) $lastRoll['turn_passed'],
+                    'replayed' => true,
+                    'state' => $state,
+                ];
+            }
 
             $this->assertTurn($state, $color);
             $this->assertPhase($state, 'awaiting_roll');
@@ -175,6 +202,9 @@ class GameEngineService
                 $state['dice'] = null;
                 $state['phase'] = 'awaiting_roll';
                 $state = $this->advanceTurn($match, $state);
+                $this->rememberRoll(
+                    $state, $actionId, $color, $dice, true, [], true,
+                );
                 $this->persist($row, $state);
 
                 return [
@@ -182,6 +212,7 @@ class GameEngineService
                     'forfeited' => true,
                     'legal_moves' => [],
                     'turn_passed' => true,
+                    'replayed' => false,
                     'state' => $state,
                 ];
             }
@@ -197,6 +228,9 @@ class GameEngineService
                 if ($dice === 6) {
                     $state['phase'] = 'awaiting_roll';
                     $state['dice'] = null;
+                    $this->rememberRoll(
+                        $state, $actionId, $color, $dice, false, [], false,
+                    );
                     $this->persist($row, $state);
 
                     return [
@@ -204,12 +238,16 @@ class GameEngineService
                         'forfeited' => false,
                         'legal_moves' => [],
                         'turn_passed' => false,
+                        'replayed' => false,
                         'state' => $state,
                     ];
                 }
 
                 $state['dice'] = null;
                 $state = $this->advanceTurn($match, $state);
+                $this->rememberRoll(
+                    $state, $actionId, $color, $dice, false, [], true,
+                );
                 $this->persist($row, $state);
 
                 return [
@@ -217,6 +255,7 @@ class GameEngineService
                     'forfeited' => false,
                     'legal_moves' => [],
                     'turn_passed' => true,
+                    'replayed' => false,
                     'state' => $state,
                 ];
             }
@@ -224,6 +263,9 @@ class GameEngineService
             // Legal moves exist: enter move phase holding the dice value.
             $state['dice'] = $dice;
             $state['phase'] = 'awaiting_move';
+            $this->rememberRoll(
+                $state, $actionId, $color, $dice, false, $legalMoves, false,
+            );
             $this->persist($row, $state);
 
             return [
@@ -231,9 +273,37 @@ class GameEngineService
                 'forfeited' => false,
                 'legal_moves' => $legalMoves,
                 'turn_passed' => false,
+                'replayed' => false,
                 'state' => $state,
             ];
         });
+    }
+
+    /**
+     * Store the response for one dice action in the authoritative snapshot so
+     * an identical transport retry can be answered without rolling again.
+     *
+     * @param  array<string,mixed>  $state
+     * @param  array<int,array<string,mixed>>  $legalMoves
+     */
+    private function rememberRoll(
+        array &$state,
+        ?string $actionId,
+        string $color,
+        int $dice,
+        bool $forfeited,
+        array $legalMoves,
+        bool $turnPassed,
+    ): void {
+        $state['last_roll'] = [
+            'action_hash' => $actionId === null ? null : hash('sha256', $actionId),
+            'color' => $color,
+            'dice' => $dice,
+            'forfeited' => $forfeited,
+            'legal_moves' => $legalMoves,
+            'turn_passed' => $turnPassed,
+            'state_seq' => (int) $state['seq'],
+        ];
     }
 
     /* =====================================================================

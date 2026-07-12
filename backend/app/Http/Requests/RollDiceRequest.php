@@ -17,6 +17,10 @@ class RollDiceRequest extends FormRequest
             // The color the requester claims to act as; ownership is verified
             // by MatchPolicy and the turn is verified by the engine.
             'color' => ['required', 'in:red,green,yellow,blue'],
+            // Stable for one physical tap. If transport retries the same HTTP
+            // request, the engine returns the first result instead of rolling
+            // a second time.
+            'action_id' => ['nullable', 'string', 'max:100', 'regex:/^[A-Za-z0-9_-]+$/'],
         ];
     }
 }

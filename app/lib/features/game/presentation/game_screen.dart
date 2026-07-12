@@ -292,6 +292,7 @@ class _PodDice extends StatelessWidget {
       enabled: isLocalHuman && session.canRoll,
       onRoll: onRoll,
       size: active ? 48 : 34,
+      tapTargetSize: active ? 68 : 34,
       tint: color,
     );
 
@@ -337,6 +338,8 @@ class _StatusStrip extends ConsumerWidget {
       status = 'Game over';
     } else if (session.isRolling) {
       status = 'Rolling…';
+    } else if (session.banner?.trim().isNotEmpty == true) {
+      status = session.banner!;
     } else if (current.isBot) {
       status = '${current.name} is thinking…';
     } else if (game.status == GameStatus.awaitingMove) {

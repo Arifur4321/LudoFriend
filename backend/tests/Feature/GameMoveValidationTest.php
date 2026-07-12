@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\GameRoom;
+use App\Models\MatchEvent;
 use App\Models\MatchState;
 use App\Models\Matchup;
 use App\Models\User;
@@ -119,6 +120,47 @@ class GameMoveValidationTest extends TestCase
         $result = $engine->roll($this->match, $color, forcedDice: 6);
         $this->assertNotEmpty($result['legal_moves']);
         $this->assertSame(0, $result['legal_moves'][0]['to']);
+    }
+
+    public function test_retried_dice_action_returns_the_original_roll_once(): void
+    {
+        $user = $this->currentTurnUser();
+        $color = $this->colorOf($user);
+        $engine = app(GameEngineService::class);
+        $actionId = 'roll-one-physical-tap';
+
+        $first = $engine->roll(
+            $this->match,
+            $color,
+            forcedDice: 6,
+            actionId: $actionId,
+        );
+        $versionAfterFirst = MatchState::where('match_id', $this->match->id)
+            ->value('version');
+        $eventsAfterFirst = MatchEvent::where('match_id', $this->match->id)->count();
+
+        // Simulate the transport retrying the exact request. The forced value
+        // differs deliberately: it must never create another roll.
+        $retry = $engine->roll(
+            $this->match,
+            $color,
+            forcedDice: 1,
+            actionId: $actionId,
+        );
+
+        $this->assertSame(6, $first['dice']);
+        $this->assertFalse($first['replayed']);
+        $this->assertSame($first['dice'], $retry['dice']);
+        $this->assertSame($first['legal_moves'], $retry['legal_moves']);
+        $this->assertTrue($retry['replayed']);
+        $this->assertSame(
+            $versionAfterFirst,
+            MatchState::where('match_id', $this->match->id)->value('version'),
+        );
+        $this->assertSame(
+            $eventsAfterFirst,
+            MatchEvent::where('match_id', $this->match->id)->count(),
+        );
     }
 
     public function test_state_refresh_returns_pending_phase_and_legal_moves(): void

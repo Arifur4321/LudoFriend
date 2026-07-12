@@ -70,6 +70,7 @@ class GameController extends StateNotifier<GameSession> {
   StreamSubscription<RealtimeEvent>? _rtSub;
   Timer? _statePoll;
   int _lastAnimatedMoveSequence = -1;
+  int _rollActionSequence = 0;
 
   /// Last authoritative snapshot applied in an online match, used to detect
   /// home-arrivals / captures / the win from state diffs so BOTH players get
@@ -291,33 +292,93 @@ class GameController extends StateNotifier<GameSession> {
 
   Future<void> _sendRoll() async {
     if (_busy || !state.canRoll || config.myColor == null) return;
+    final original = state;
+    final actionId = [
+      config.matchId,
+      config.myColor,
+      DateTime.now().microsecondsSinceEpoch,
+      _rollActionSequence++,
+    ].join('-');
+    final minimumAnimation = Future<void>.delayed(AppConstants.diceRoll);
+    var needsResync = false;
     _busy = true;
     state = state.copyWith(isRolling: true, banner: null);
     _audio.play(Sfx.dice);
     try {
       final res = await _ref.read(dioProvider).post(
         ApiEndpoints.rollDice(config.matchId!),
-        data: {'color': config.myColor},
+        data: {'color': config.myColor, 'action_id': actionId},
       );
       final data = _payload(res.data);
       final serverState = _asMap(data['state']);
       final movable = ServerStateAdapter.movableIds(
           config.myColor ?? '', data['legal_moves']);
+      final dice = (data['dice'] as num?)?.toInt();
+      final forfeited = data['forfeited'] == true;
+      final turnPassed = data['turn_passed'] == true;
+
+      // Keep a real roll visible long enough for the player to perceive it,
+      // even when the API responds faster than the animation can start.
+      await minimumAnimation;
+      if (!mounted) return;
       if (serverState != null) {
-        _applyServerState(serverState, movable: movable);
+        _applyServerState(
+          serverState,
+          movable: movable,
+          banner: _onlineRollBanner(
+            dice: dice,
+            forfeited: forfeited,
+            turnPassed: turnPassed,
+            hasLegalMoves: movable.isNotEmpty,
+          ),
+          displayedDice: turnPassed ? null : dice,
+        );
       } else {
-        state = state.copyWith(isRolling: false);
-      }
-      _busy = false;
-      // Auto-play a forced single move for snappier turns.
-      if (movable.length == 1) {
-        await _sendMove(movable.first);
+        state = GameSession(
+          game: original.game,
+          diceFace: original.diceFace,
+          lastMove: original.lastMove,
+          banner: 'Roll was not confirmed — tap the dice once to retry.',
+        );
+        needsResync = true;
       }
     } catch (e, st) {
       AppLogger.e('online roll failed', e, st);
-      state = state.copyWith(isRolling: false);
+      await minimumAnimation;
+      if (!mounted) return;
+      state = GameSession(
+        game: original.game,
+        diceFace: original.diceFace,
+        lastMove: original.lastMove,
+        banner: 'Connection interrupted — checking the game state…',
+      );
+      needsResync = true;
+    } finally {
       _busy = false;
     }
+
+    if (needsResync && mounted) {
+      await _refreshState();
+      if (!mounted) return;
+      state = state.copyWith(
+        banner: state.canRoll
+            ? 'Roll was not confirmed — tap the dice once to retry.'
+            : 'Connection restored — game state synchronized.',
+      );
+    }
+  }
+
+  String _onlineRollBanner({
+    required int? dice,
+    required bool forfeited,
+    required bool turnPassed,
+    required bool hasLegalMoves,
+  }) {
+    if (forfeited) return 'Three sixes — turn skipped!';
+    if (dice == null) return 'Dice rolled.';
+    if (hasLegalMoves) return 'Rolled $dice — tap a glowing pawn.';
+    if (turnPassed) return 'Rolled $dice — no legal move. Turn passed.';
+    return 'Rolled $dice — no legal move. Roll again!';
   }
 
   Future<void> _sendMove(String tokenId) async {
@@ -408,6 +469,8 @@ class GameController extends StateNotifier<GameSession> {
   void _applyServerState(
     Map<String, dynamic> serverState, {
     List<String> movable = const [],
+    String? banner,
+    int? displayedDice,
   }) {
     if (!mounted) return;
     final game = ServerStateAdapter.toGameState(
@@ -418,7 +481,11 @@ class GameController extends StateNotifier<GameSession> {
     );
     final prev = _lastSyncedGame;
     _lastSyncedGame = game;
-    state = GameSession(game: game, diceFace: game.lastDice);
+    state = GameSession(
+      game: game,
+      diceFace: displayedDice ?? game.lastDice,
+      banner: banner,
+    );
     // Never on the first snapshot (joining/reconnecting mustn't replay noises).
     if (prev != null) _announceDiff(prev, game);
   }

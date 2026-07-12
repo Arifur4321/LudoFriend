@@ -19,6 +19,7 @@ class DiceWidget extends ConsumerStatefulWidget {
     required this.enabled,
     required this.onRoll,
     this.size = 78,
+    this.tapTargetSize = 64,
     this.tint = AppColors.primary,
   });
 
@@ -27,6 +28,7 @@ class DiceWidget extends ConsumerStatefulWidget {
   final bool enabled;
   final VoidCallback onRoll;
   final double size;
+  final double tapTargetSize;
   final Color tint;
 
   @override
@@ -45,6 +47,8 @@ class _DiceWidgetState extends ConsumerState<DiceWidget>
   );
   final math.Random _rng = math.Random();
   int _shown = 1;
+
+  bool get _canRoll => widget.enabled && !widget.rolling;
 
   @override
   void initState() {
@@ -77,54 +81,70 @@ class _DiceWidgetState extends ConsumerState<DiceWidget>
   @override
   Widget build(BuildContext context) {
     final theme = ref.watch(activeBoardThemeProvider);
+    final targetSize = math.max(widget.size, widget.tapTargetSize);
 
-    return GestureDetector(
-      onTap: widget.enabled && !widget.rolling ? widget.onRoll : null,
-      behavior: HitTestBehavior.opaque,
-      child: AnimatedBuilder(
-        animation: Listenable.merge([_roll, _settle]),
-        builder: (context, child) {
-          final rolling = widget.rolling;
-          final face =
-              rolling ? (_rng.nextInt(6) + 1) : (widget.face ?? _shown);
+    return Semantics(
+      button: true,
+      enabled: _canRoll,
+      label: _canRoll ? 'Roll dice' : 'Dice',
+      onTap: _canRoll ? widget.onRoll : null,
+      child: Listener(
+        behavior: HitTestBehavior.opaque,
+        // React on the first press instead of waiting for a full tap-up
+        // gesture. This matches the board-level pawn input and makes the die
+        // reliable on small/high-density phone screens. The controller's
+        // synchronous busy guard guarantees one server request per press.
+        onPointerDown: _canRoll ? (_) => widget.onRoll() : null,
+        child: SizedBox.square(
+          dimension: targetSize,
+          child: Center(
+            child: AnimatedBuilder(
+              animation: Listenable.merge([_roll, _settle]),
+              builder: (context, child) {
+                final rolling = widget.rolling;
+                final face =
+                    rolling ? (_rng.nextInt(6) + 1) : (widget.face ?? _shown);
 
-          double angle = 0, bounce = 0, sx = 1, sy = 1;
-          if (rolling) {
-            final t = _roll.value;
-            bounce = -math.sin(t * math.pi) * widget.size * 0.22; // hop
-            angle = math.sin(t * 2 * math.pi) * 0.5; // rock, not a full spin
-            sy = 0.82 + 0.18 * math.cos(t * 2 * math.pi).abs(); // squash
-          } else if (_settle.isAnimating) {
-            final e = Curves.elasticOut.transform(_settle.value);
-            sx = sy = 0.86 + 0.14 * e; // overshoot into place
-          }
+                double angle = 0, bounce = 0, sx = 1, sy = 1;
+                if (rolling) {
+                  final t = _roll.value;
+                  bounce = -math.sin(t * math.pi) * widget.size * 0.22;
+                  angle = math.sin(t * 2 * math.pi) * 0.5;
+                  sy = 0.82 + 0.18 * math.cos(t * 2 * math.pi).abs();
+                } else if (_settle.isAnimating) {
+                  final e = Curves.elasticOut.transform(_settle.value);
+                  sx = sy = 0.86 + 0.14 * e;
+                }
 
-          return Opacity(
-            opacity: widget.enabled || rolling ? 1 : 0.6,
-            child: Transform.translate(
-              offset: Offset(0, bounce),
-              child: Transform.rotate(
-                angle: angle,
-                child: Transform(
-                  alignment: Alignment.center,
-                  transform: Matrix4.diagonal3Values(sx, sy, 1),
-                  child: SizedBox.square(
-                    dimension: widget.size,
-                    child: CustomPaint(
-                      painter: _CubeDiePainter(
-                        face: face,
-                        top: theme.diceTop,
-                        bottom: theme.diceBottom,
-                        pip: theme.dicePip,
-                        shadow: widget.tint,
+                return Opacity(
+                  opacity: widget.enabled || rolling ? 1 : 0.6,
+                  child: Transform.translate(
+                    offset: Offset(0, bounce),
+                    child: Transform.rotate(
+                      angle: angle,
+                      child: Transform(
+                        alignment: Alignment.center,
+                        transform: Matrix4.diagonal3Values(sx, sy, 1),
+                        child: SizedBox.square(
+                          dimension: widget.size,
+                          child: CustomPaint(
+                            painter: _CubeDiePainter(
+                              face: face,
+                              top: theme.diceTop,
+                              bottom: theme.diceBottom,
+                              pip: theme.dicePip,
+                              shadow: widget.tint,
+                            ),
+                          ),
+                        ),
                       ),
                     ),
                   ),
-                ),
-              ),
+                );
+              },
             ),
-          );
-        },
+          ),
+        ),
       ),
     );
   }
