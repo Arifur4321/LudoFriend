@@ -37,3 +37,6 @@ backend/.phpunit.result.cache
 # Claude session temp artifacts
 _to_delete/
 *.tgz
+
+# Google OAuth downloaded credentials
+client_secret_*.json

@@ -18,11 +18,16 @@ import 'websocket_service.dart';
 /// or auth fails (e.g. Reverb isn't running) it logs and no-ops rather than
 /// throwing, so the rest of the app keeps working.
 class RealtimeMatchService {
-  RealtimeMatchService(this._ws, this._dio);
+  RealtimeMatchService(this._ws, this._dio) {
+    _connectionSub = _ws.connections.listen(_onConnected);
+  }
 
   final WebSocketService _ws;
   final Dio _dio;
   final Set<String> _joined = {};
+  final Set<String> _subscribing = {};
+  final Map<String, Timer> _authRetries = {};
+  late final StreamSubscription<String> _connectionSub;
 
   Stream<RealtimeEvent> get events => _ws.events;
 
@@ -35,27 +40,63 @@ class RealtimeMatchService {
 
   Future<void> _joinPrivate(String name) async {
     final channel = 'private-$name';
-    if (_joined.contains(channel)) return;
+    if (!_joined.add(channel)) return;
+
+    await _subscribePrivate(channel);
+  }
+
+  Future<void> _subscribePrivate(String channel, {String? socketId}) async {
+    if (!_joined.contains(channel) || !_subscribing.add(channel)) return;
 
     try {
       await _ws.connect();
-      final socketId = await _awaitSocketId();
-      String? auth;
-      if (socketId != null) {
-        auth = await _authorize(socketId, channel);
+      final currentSocketId = socketId ?? await _awaitSocketId();
+      if (currentSocketId == null) {
+        _scheduleAuthRetry(channel);
+        return;
       }
+
+      final auth = await _authorize(currentSocketId, channel);
+      if (auth == null) {
+        _scheduleAuthRetry(channel);
+        return;
+      }
+
       await _ws.subscribe(channel, auth: auth);
-      _joined.add(channel);
+      _authRetries.remove(channel)?.cancel();
     } catch (e, st) {
       AppLogger.e('realtime join failed for $channel', e, st);
+      _scheduleAuthRetry(channel);
+    } finally {
+      _subscribing.remove(channel);
     }
   }
 
   Future<void> _leave(String name) async {
     final channel = 'private-$name';
     if (_joined.remove(channel)) {
+      _authRetries.remove(channel)?.cancel();
       await _ws.unsubscribe(channel);
     }
+  }
+
+  /// A private-channel signature is valid only for the socket id it was issued
+  /// to. Re-authorize every active room/match/user subscription after the
+  /// WebSocket reconnects so invites and turn events continue after a network
+  /// switch or the app returning from the background.
+  Future<void> _onConnected(String socketId) async {
+    for (final channel in _joined.toList(growable: false)) {
+      await _subscribePrivate(channel, socketId: socketId);
+    }
+  }
+
+  void _scheduleAuthRetry(String channel) {
+    if (!_joined.contains(channel)) return;
+    _authRetries.remove(channel)?.cancel();
+    _authRetries[channel] = Timer(const Duration(seconds: 3), () {
+      _authRetries.remove(channel);
+      _subscribePrivate(channel);
+    });
   }
 
   Future<String?> _awaitSocketId() async {
@@ -87,12 +128,26 @@ class RealtimeMatchService {
       await _ws.unsubscribe(c);
     }
     _joined.clear();
+    for (final timer in _authRetries.values) {
+      timer.cancel();
+    }
+    _authRetries.clear();
+  }
+
+  void dispose() {
+    _connectionSub.cancel();
+    for (final timer in _authRetries.values) {
+      timer.cancel();
+    }
+    _authRetries.clear();
   }
 }
 
 final realtimeMatchServiceProvider = Provider<RealtimeMatchService>((ref) {
-  return RealtimeMatchService(
+  final service = RealtimeMatchService(
     ref.watch(webSocketServiceProvider),
     ref.watch(dioProvider),
   );
+  ref.onDispose(service.dispose);
+  return service;
 });

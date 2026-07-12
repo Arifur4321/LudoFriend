@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Storage;
 use RuntimeException;
 
 /**
@@ -16,6 +17,7 @@ use RuntimeException;
 class FacebookService
 {
     private string $graphUrl;
+
     private string $version;
 
     public function __construct()
@@ -53,23 +55,23 @@ class FacebookService
             'id' => $fbId,
             'name' => $data['name'] ?? null,
             'email' => $data['email'] ?? null,
-            'avatar' => $this->pictureUrl($fbId, $data),
+            'avatar' => $this->persistPicture($fbId, $data),
         ];
     }
 
     /**
-     * Build a stable, tokenless Graph picture URL for a Facebook user.
+     * Cache Facebook's current profile picture on our public disk.
      *
-     * The inline `picture.data.url` is a short-lived CDN ("lookaside") link that
-     * expires and can exceed our 255-char avatar column, so we instead store the
-     * canonical `graph.facebook.com/{id}/picture` redirect: it never expires,
-     * needs no access token, and always resolves to the user's current photo.
-     * Returns null when the account only has the default silhouette, so the app
-     * can fall back to its own nicer placeholder avatar.
+     * The Graph response's CDN URL is usable immediately but expires, while a
+     * bare `/{app-scoped-id}/picture` redirect is not reliable for every client.
+     * Serving a local copy gives room and match participants one stable HTTPS
+     * URL without exposing any Facebook access token. If storage is temporarily
+     * unavailable, fall back to the fresh CDN URL returned by Facebook.
      */
-    private function pictureUrl(string $fbId, array $data): ?string
+    private function persistPicture(string $fbId, array $data): ?string
     {
-        if ($fbId === '') {
+        $remoteUrl = data_get($data, 'picture.data.url');
+        if ($fbId === '' || ! is_string($remoteUrl) || $remoteUrl === '') {
             return null;
         }
 
@@ -77,7 +79,25 @@ class FacebookService
             return null;
         }
 
-        return "{$this->graphUrl}/{$fbId}/picture?type=large&width=256&height=256";
+        try {
+            $response = Http::timeout(10)->get($remoteUrl);
+            if ($response->successful() && $response->body() !== '') {
+                $contentType = strtolower((string) $response->header('Content-Type'));
+                $extension = str_contains($contentType, 'png')
+                    ? 'png'
+                    : (str_contains($contentType, 'webp') ? 'webp' : 'jpg');
+                $safeId = preg_replace('/[^A-Za-z0-9_-]/', '_', $fbId) ?: hash('sha256', $fbId);
+                $path = "avatars/facebook/{$safeId}.{$extension}";
+
+                if (Storage::disk('public')->put($path, $response->body())) {
+                    return rtrim((string) config('app.url'), '/').'/storage/'.$path;
+                }
+            }
+        } catch (\Throwable) {
+            // The fresh Graph CDN URL below remains a safe best-effort fallback.
+        }
+
+        return $remoteUrl;
     }
 
     /**

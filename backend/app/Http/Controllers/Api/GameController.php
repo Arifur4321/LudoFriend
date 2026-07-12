@@ -20,16 +20,20 @@ use RuntimeException;
  */
 class GameController extends Controller
 {
-    public function __construct(private readonly GameEngineService $engine)
-    {
-    }
+    public function __construct(private readonly GameEngineService $engine) {}
 
     /** Return the authoritative match state for a participant. */
-    public function state(Request $request, Matchup $match): MatchResource
+    public function state(Request $request, Matchup $match): JsonResponse
     {
         $this->authorize('view', $match);
 
-        return new MatchResource($match->load(['players.user', 'state']));
+        $match->load(['players.user', 'state']);
+        $payload = (new MatchResource($match))->resolve($request);
+        $payload['legal_moves'] = $this->engine->legalMovesForState(
+            $match->state?->state ?? [],
+        );
+
+        return response()->json(['data' => $payload]);
     }
 
     /** Roll the dice for the caller's color. */

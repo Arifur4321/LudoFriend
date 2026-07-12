@@ -7,9 +7,9 @@ use App\Events\GameEnded;
 use App\Events\TokenMoved;
 use App\Events\TurnChanged;
 use App\Jobs\PersistMatchReplay;
-use App\Models\Matchup;
 use App\Models\MatchEvent;
 use App\Models\MatchState;
+use App\Models\Matchup;
 use App\Models\PlayerProfile;
 use App\Models\PlayerStat;
 use App\Models\WalletTransaction;
@@ -49,8 +49,7 @@ class GameEngineService
     public function __construct(
         private readonly LudoRules $rules,
         private readonly WalletService $wallet,
-    ) {
-    }
+    ) {}
 
     /* =====================================================================
      | Lifecycle
@@ -96,6 +95,31 @@ class GameEngineService
         }
 
         return $state;
+    }
+
+    /**
+     * Return the legal moves for the currently pending roll, if any.
+     *
+     * State refreshes use this after a reconnect or missed broadcast so the
+     * active player can resume an awaiting-move turn instead of seeing a stale
+     * dice/disabled board. The rules are still computed authoritatively here;
+     * the client never supplies destinations.
+     *
+     * @param  array<string,mixed>  $state
+     * @return array<int,array<string,mixed>>
+     */
+    public function legalMovesForState(array $state): array
+    {
+        if (($state['phase'] ?? null) !== 'awaiting_move'
+            || ! isset($state['turn'], $state['dice'], $state['tokens'])) {
+            return [];
+        }
+
+        return $this->rules->legalMoves(
+            (string) $state['turn'],
+            (int) $state['dice'],
+            $state['tokens'],
+        );
     }
 
     /* =====================================================================
@@ -221,8 +245,8 @@ class GameEngineService
      * the legal moves recomputed server-side. The client only supplies which
      * token to move; the destination and captures are derived authoritatively.
      *
-     * @param  int       $tokenIndex  0..3 — the token the player wants to move
-     * @param  int|null  $clientSeq   optional client-asserted next seq (anti-replay)
+     * @param  int  $tokenIndex  0..3 — the token the player wants to move
+     * @param  int|null  $clientSeq  optional client-asserted next seq (anti-replay)
      * @return array{
      *   from:int, to:int, captured:array, finished:bool,
      *   extra_turn:bool, winner:?string, turn_passed:bool, state:array

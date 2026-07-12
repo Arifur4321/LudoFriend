@@ -2,7 +2,6 @@
 
 namespace Tests\Feature;
 
-use App\Models\GameRoom;
 use App\Models\User;
 use App\Services\RoomService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -21,7 +20,9 @@ class RoomCreateJoinTest extends TestCase
 
     public function test_host_can_create_room_and_is_seated(): void
     {
-        $host = User::factory()->create();
+        $host = User::factory()->create([
+            'avatar' => 'https://api.example.test/storage/avatars/facebook/host.jpg',
+        ]);
 
         $response = $this->actingAs($host)->postJson('/api/v1/rooms', [
             'mode' => '4p',
@@ -30,7 +31,8 @@ class RoomCreateJoinTest extends TestCase
 
         $response->assertCreated()
             ->assertJsonPath('data.host_user_id', $host->id)
-            ->assertJsonPath('data.status', 'lobby');
+            ->assertJsonPath('data.status', 'lobby')
+            ->assertJsonPath('data.players.0.user.avatar', $host->avatar);
 
         $roomId = $response->json('data.id');
         $this->assertDatabaseHas('game_room_players', [

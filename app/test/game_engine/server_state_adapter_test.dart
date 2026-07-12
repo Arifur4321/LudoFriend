@@ -60,6 +60,25 @@ void main() {
     expect(withMoves.pendingMovableTokenIds, ['red_0']);
   });
 
+  test('preserves server awaiting-move phase for a remote player', () {
+    final state = ServerStateAdapter.toGameState(
+      serverState: {
+        'tokens': {
+          'red': [0, -1, -1, -1],
+          'yellow': [-1, -1, -1, -1],
+        },
+        'turn': 'yellow',
+        'phase': 'awaiting_move',
+        'dice': 6,
+      },
+      players: players,
+    );
+
+    expect(state.status, GameStatus.awaitingMove);
+    expect(state.pendingMovableTokenIds, isEmpty);
+    expect(state.currentColor, LudoColor.yellow);
+  });
+
   test('detects a finished match from winner', () {
     final state = ServerStateAdapter.toGameState(
       serverState: {

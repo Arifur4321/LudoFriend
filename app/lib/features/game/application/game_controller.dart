@@ -65,7 +65,9 @@ class GameController extends StateNotifier<GameSession> {
   final EasyBot _bot = const EasyBot();
   late final DiceRoller _dice;
   bool _busy = false;
+  bool _refreshing = false;
   StreamSubscription<RealtimeEvent>? _rtSub;
+  Timer? _statePoll;
 
   /// Last authoritative snapshot applied in an online match, used to detect
   /// home-arrivals / captures / the win from state diffs so BOTH players get
@@ -98,6 +100,7 @@ class GameController extends StateNotifier<GameSession> {
   @override
   void dispose() {
     _rtSub?.cancel();
+    _statePoll?.cancel();
     if (_online) {
       final id = int.tryParse(config.matchId ?? '');
       if (id != null) {
@@ -233,22 +236,44 @@ class GameController extends StateNotifier<GameSession> {
       await realtime.joinMatch(matchId);
     }
     await _refreshState();
+    // Realtime remains the fast path. This lightweight authoritative refresh
+    // is the safety net for a dropped broadcast, a temporarily unavailable
+    // Reverb worker, or a phone that switched networks while the opponent was
+    // taking their turn. Without it, one missed event leaves the dice disabled
+    // forever on the other device.
+    if (mounted) {
+      _statePoll = Timer.periodic(
+        const Duration(seconds: 2),
+        (_) => _refreshState(),
+      );
+    }
   }
 
   Future<void> _refreshState() async {
-    if (!mounted) return;
+    if (!mounted || _busy || _refreshing) return;
+    _refreshing = true;
     try {
-      final res =
-          await _ref.read(dioProvider).get(ApiEndpoints.gameState(config.matchId!));
-      final serverState = _extractState(res.data);
-      if (serverState != null) _applyServerState(serverState);
+      final res = await _ref
+          .read(dioProvider)
+          .get(ApiEndpoints.gameState(config.matchId!));
+      final payload = _payload(res.data);
+      final serverState = _asMap(payload['state']);
+      if (serverState != null) {
+        final turn = serverState['turn'] as String?;
+        final movable = turn != null && turn == config.myColor
+            ? ServerStateAdapter.movableIds(turn, payload['legal_moves'])
+            : const <String>[];
+        _applyServerState(serverState, movable: movable);
+      }
     } catch (e, st) {
       AppLogger.e('online state refresh failed', e, st);
+    } finally {
+      _refreshing = false;
     }
   }
 
   Future<void> _sendRoll() async {
-    if (_busy) return;
+    if (_busy || !state.canRoll || config.myColor == null) return;
     _busy = true;
     state = state.copyWith(isRolling: true, banner: null);
     _audio.play(Sfx.dice);
@@ -259,8 +284,8 @@ class GameController extends StateNotifier<GameSession> {
       );
       final data = _payload(res.data);
       final serverState = _asMap(data['state']);
-      final movable =
-          ServerStateAdapter.movableIds(config.myColor ?? '', data['legal_moves']);
+      final movable = ServerStateAdapter.movableIds(
+          config.myColor ?? '', data['legal_moves']);
       if (serverState != null) {
         _applyServerState(serverState, movable: movable);
       } else {
@@ -279,9 +304,11 @@ class GameController extends StateNotifier<GameSession> {
   }
 
   Future<void> _sendMove(String tokenId) async {
+    if (_busy || !state.game.pendingMovableTokenIds.contains(tokenId)) return;
     final parts = tokenId.split('_');
     final color = parts.isNotEmpty ? parts[0] : (config.myColor ?? '');
     final token = int.tryParse(parts.length > 1 ? parts[1] : '') ?? 0;
+    _busy = true;
     try {
       final res = await _ref.read(dioProvider).post(
         ApiEndpoints.moveToken(config.matchId!),
@@ -296,6 +323,8 @@ class GameController extends StateNotifier<GameSession> {
       }
     } catch (e, st) {
       AppLogger.e('online move failed', e, st);
+    } finally {
+      _busy = false;
     }
   }
 
@@ -327,8 +356,7 @@ class GameController extends StateNotifier<GameSession> {
     var reachedHome = false;
     for (final p in next.players) {
       final c = p.color;
-      int homes(GameState g) =>
-          g.tokensOf(c).where((t) => t.isFinished).length;
+      int homes(GameState g) => g.tokensOf(c).where((t) => t.isFinished).length;
       int based(GameState g) => g.tokensOf(c).where((t) => t.isInBase).length;
       if (homes(next) > homes(prev)) {
         reachedHome = true;
@@ -359,6 +387,7 @@ class GameController extends StateNotifier<GameSession> {
 
   void _onRealtimeEvent(RealtimeEvent ev) {
     if (!mounted) return;
+    if (ev.channel != 'private-match.${config.matchId}') return;
     switch (ev.event) {
       case 'game.dice_rolled':
       case 'game.token_moved':
@@ -371,8 +400,7 @@ class GameController extends StateNotifier<GameSession> {
       case 'chat.message':
         if (_ref.read(settingsControllerProvider).chat) {
           final myId = _ref.read(authControllerProvider).valueOrNull?.id;
-          final mine =
-              myId != null && ev.data['user_id']?.toString() == myId;
+          final mine = myId != null && ev.data['user_id']?.toString() == myId;
           final body = ev.data['body'] as String? ?? '';
           if (body.isEmpty) break;
           if (mine) {
@@ -410,10 +438,4 @@ class GameController extends StateNotifier<GameSession> {
 
   Map<String, dynamic>? _asMap(dynamic v) =>
       v is Map ? v.cast<String, dynamic>() : null;
-
-  /// Pull the compact match `state` out of a MatchResource response.
-  Map<String, dynamic>? _extractState(dynamic body) {
-    final root = _payload(body);
-    return _asMap(root['state']);
-  }
 }

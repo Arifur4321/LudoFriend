@@ -1,7 +1,7 @@
 name: ludo_friends
 description: "Ludo Friends — an original animated online/offline multiplayer Ludo game."
 publish_to: "none"
-version: 1.0.0+3
+version: 1.0.0+4
 
 environment:
   sdk: ">=3.5.0 <4.0.0"

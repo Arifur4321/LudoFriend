@@ -117,10 +117,8 @@ Route::prefix('v1')->group(function () {
             Route::get('matchmaking/status', [MatchmakingController::class, 'status']);
 
             // In-match actions (server-authoritative)
-            Route::get('matches/{match}/state', [GameController::class, 'state']);
             Route::post('matches/{match}/roll', [GameController::class, 'roll']);
             Route::post('matches/{match}/move', [GameController::class, 'move']);
-            Route::post('matches/{match}/reconnect', [GameController::class, 'reconnect']);
 
             // In-match chat + emoji reactions.
             Route::post('matches/{match}/chat', [ChatController::class, 'message']);
@@ -128,6 +126,15 @@ Route::prefix('v1')->group(function () {
 
             // Friend "come play" room invite.
             Route::post('friends/invite-to-room', [FriendController::class, 'inviteToRoom']);
+        });
+
+        // Read-only match synchronization has its own allowance because every
+        // active client periodically verifies authoritative state as a safety
+        // net for missed realtime events. Mutating roll/move calls remain on
+        // the tighter game-action limiter above.
+        Route::middleware('throttle:120,1')->group(function () {
+            Route::get('matches/{match}/state', [GameController::class, 'state']);
+            Route::post('matches/{match}/reconnect', [GameController::class, 'reconnect']);
         });
 
         /* -----------------------------------------------------------

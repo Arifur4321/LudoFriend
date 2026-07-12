@@ -25,20 +25,24 @@ class WebSocketService {
   WebSocketChannel? _channel;
   final StreamController<RealtimeEvent> _events =
       StreamController<RealtimeEvent>.broadcast();
+  final StreamController<String> _connections =
+      StreamController<String>.broadcast();
   final Map<String, String?> _subscriptions = {}; // channel -> auth (nullable)
 
   String? _socketId;
   bool _connected = false;
+  bool _connecting = false;
   int _retry = 0;
   Timer? _reconnectTimer;
   bool _disposed = false;
 
   Stream<RealtimeEvent> get events => _events.stream;
+  Stream<String> get connections => _connections.stream;
   bool get isConnected => _connected;
   String? get socketId => _socketId;
 
   Uri _endpoint() {
-    final scheme = AppConfig.wsTls ? 'wss' : 'ws';
+    const scheme = AppConfig.wsTls ? 'wss' : 'ws';
     return Uri.parse(
       '$scheme://${AppConfig.wsHost}:${AppConfig.wsPort}/app/${AppConfig.wsKey}'
       '?protocol=7&client=ludo-friends&version=1.0.0',
@@ -46,7 +50,8 @@ class WebSocketService {
   }
 
   Future<void> connect() async {
-    if (_disposed) return;
+    if (_disposed || _connected || _connecting) return;
+    _connecting = true;
     try {
       final channel = WebSocketChannel.connect(_endpoint());
       _channel = channel;
@@ -57,6 +62,7 @@ class WebSocketService {
         cancelOnError: false,
       );
     } catch (e, st) {
+      _connecting = false;
       AppLogger.e('WS connect failed', e, st);
       _scheduleReconnect();
     }
@@ -85,11 +91,14 @@ class WebSocketService {
       case 'pusher:connection_established':
         _socketId = dataMap['socket_id'] as String?;
         _connected = true;
+        _connecting = false;
         _retry = 0;
         AppLogger.d('WS connected (socket $_socketId)');
-        // Re-subscribe to everything after a reconnect.
-        for (final entry in _subscriptions.entries) {
-          _sendSubscribe(entry.key, entry.value);
+        if (_socketId != null) {
+          // Private-channel auth signatures are tied to the socket id. The
+          // realtime coordinator listens here and obtains fresh signatures
+          // before resubscribing after every reconnect.
+          _connections.add(_socketId!);
         }
         break;
       case 'pusher:ping':
@@ -105,12 +114,16 @@ class WebSocketService {
 
   void _onDone() {
     _connected = false;
+    _connecting = false;
+    _socketId = null;
     if (!_disposed) _scheduleReconnect();
   }
 
   void _onError(Object error, StackTrace st) {
     AppLogger.e('WS stream error', error, st);
     _connected = false;
+    _connecting = false;
+    _socketId = null;
     if (!_disposed) _scheduleReconnect();
   }
 
@@ -155,6 +168,8 @@ class WebSocketService {
     _reconnectTimer?.cancel();
     _subscriptions.clear();
     _connected = false;
+    _connecting = false;
+    _socketId = null;
     await _channel?.sink.close();
   }
 
@@ -163,6 +178,7 @@ class WebSocketService {
     _reconnectTimer?.cancel();
     _channel?.sink.close();
     _events.close();
+    _connections.close();
   }
 }
 

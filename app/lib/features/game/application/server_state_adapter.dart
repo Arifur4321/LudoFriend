@@ -22,8 +22,9 @@ class ServerStateAdapter {
     RuleConfig rules = const RuleConfig(),
     List<String> movableTokenIds = const [],
   }) {
-    final tokensMap = (serverState['tokens'] as Map?)?.cast<String, dynamic>() ??
-        const <String, dynamic>{};
+    final tokensMap =
+        (serverState['tokens'] as Map?)?.cast<String, dynamic>() ??
+            const <String, dynamic>{};
 
     final tokens = <Token>[];
     for (final player in players) {
@@ -45,13 +46,15 @@ class ServerStateAdapter {
     final rawDice = serverState['dice'];
     final dice = rawDice == null ? null : (rawDice as num).toInt();
 
+    final serverPhase = serverState['phase'] as String?;
     final serverStatus = serverState['status'] as String?;
     final winnerColor = serverState['winner'] as String?;
 
     final GameStatus status;
     if (serverStatus == 'finished' || winnerColor != null) {
       status = GameStatus.finished;
-    } else if (dice != null && movableTokenIds.isNotEmpty) {
+    } else if (serverPhase == 'awaiting_move' ||
+        (dice != null && movableTokenIds.isNotEmpty)) {
       status = GameStatus.awaitingMove;
     } else {
       status = GameStatus.waitingForRoll;
@@ -64,8 +67,7 @@ class ServerStateAdapter {
       rules: rules,
       lastDice: dice,
       status: status,
-      winner:
-          winnerColor == null ? null : LudoColor.fromId(winnerColor),
+      winner: winnerColor == null ? null : LudoColor.fromId(winnerColor),
       pendingMovableTokenIds: movableTokenIds,
     );
   }

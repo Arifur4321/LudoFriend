@@ -3,8 +3,8 @@
 namespace Tests\Feature;
 
 use App\Models\GameRoom;
-use App\Models\Matchup;
 use App\Models\MatchState;
+use App\Models\Matchup;
 use App\Models\User;
 use App\Services\Game\GameEngineService;
 use App\Services\RoomService;
@@ -26,7 +26,9 @@ class GameMoveValidationTest extends TestCase
     use RefreshDatabase;
 
     private User $red;
+
     private User $green;
+
     private Matchup $match;
 
     protected function setUp(): void
@@ -117,6 +119,27 @@ class GameMoveValidationTest extends TestCase
         $result = $engine->roll($this->match, $color, forcedDice: 6);
         $this->assertNotEmpty($result['legal_moves']);
         $this->assertSame(0, $result['legal_moves'][0]['to']);
+    }
+
+    public function test_state_refresh_returns_pending_phase_and_legal_moves(): void
+    {
+        $user = $this->currentTurnUser();
+        $color = $this->colorOf($user);
+        $opponent = $color === 'red' ? 'yellow' : 'red';
+
+        $this->setState([
+            'turn' => $color,
+            'phase' => 'awaiting_move',
+            'dice' => 6,
+            'tokens' => [$color => [-1, -1, -1, -1], $opponent => [-1, -1, -1, -1]],
+        ]);
+
+        $this->actingAs($user)
+            ->getJson("/api/v1/matches/{$this->match->id}/state")
+            ->assertOk()
+            ->assertJsonPath('data.state.phase', 'awaiting_move')
+            ->assertJsonPath('data.state.turn', $color)
+            ->assertJsonPath('data.legal_moves.0.token', 0);
     }
 
     public function test_illegal_move_is_rejected_when_token_cannot_move(): void
