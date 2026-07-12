@@ -151,8 +151,9 @@ class GameEngineService
         ?string $actionId = null,
     ): array {
         $color = strtolower($color);
+        $broadcasts = [];
 
-        return DB::transaction(function () use ($match, $color, $forcedDice, $actionId) {
+        $result = DB::transaction(function () use ($match, $color, $forcedDice, $actionId, &$broadcasts) {
             $row = MatchState::where('match_id', $match->id)->lockForUpdate()->first();
             $state = $row->state;
 
@@ -194,14 +195,17 @@ class GameEngineService
                 'consecutive_sixes' => $forfeited ? $sixesBefore + 1 : $sixesBefore + ($dice === 6 ? 1 : 0),
                 'forfeited' => $forfeited,
             ]);
-            broadcast(new DiceRolled($match->id, $color, $dice, $forfeited));
+            // Queued, not sent yet: broadcasts are flushed only after the
+            // transaction commits (see flushBroadcasts) so a peer reacting to
+            // the event can never GET a pre-commit / rolled-back state.
+            $broadcasts[] = new DiceRolled($match->id, $color, $dice, $forfeited);
 
             if ($forfeited) {
                 // Third six: forfeit move, reset counter, pass the turn.
                 $state['consecutive_sixes'] = 0;
                 $state['dice'] = null;
                 $state['phase'] = 'awaiting_roll';
-                $state = $this->advanceTurn($match, $state);
+                $state = $this->advanceTurn($match, $state, $broadcasts);
                 $this->rememberRoll(
                     $state, $actionId, $color, $dice, true, [], true,
                 );
@@ -244,7 +248,7 @@ class GameEngineService
                 }
 
                 $state['dice'] = null;
-                $state = $this->advanceTurn($match, $state);
+                $state = $this->advanceTurn($match, $state, $broadcasts);
                 $this->rememberRoll(
                     $state, $actionId, $color, $dice, false, [], true,
                 );
@@ -277,6 +281,10 @@ class GameEngineService
                 'state' => $state,
             ];
         });
+
+        $this->flushBroadcasts($broadcasts);
+
+        return $result;
     }
 
     /**
@@ -328,8 +336,9 @@ class GameEngineService
     public function move(Matchup $match, string $color, int $tokenIndex, ?int $clientSeq = null): array
     {
         $color = strtolower($color);
+        $broadcasts = [];
 
-        return DB::transaction(function () use ($match, $color, $tokenIndex, $clientSeq) {
+        $result = DB::transaction(function () use ($match, $color, $tokenIndex, $clientSeq, &$broadcasts) {
             $row = MatchState::where('match_id', $match->id)->lockForUpdate()->first();
             $state = $row->state;
 
@@ -383,7 +392,7 @@ class GameEngineService
                 'extra_turn' => $result['extra_turn'],
             ];
 
-            broadcast(new TokenMoved(
+            $broadcasts[] = new TokenMoved(
                 $match->id,
                 $color,
                 $tokenIndex,
@@ -392,7 +401,7 @@ class GameEngineService
                 $path,
                 $result['captured'],
                 $moveEvent->seq,
-            ));
+            );
 
             // Capture events.
             if ($result['captured'] !== []) {
@@ -421,7 +430,7 @@ class GameEngineService
                 // Match ends.
                 $state['phase'] = 'finished';
                 $state['dice'] = null;
-                $this->finalizeMatch($match, $state, $color);
+                $this->finalizeMatch($match, $state, $color, $broadcasts);
             } elseif ($extraTurn) {
                 // Same player rolls again.
                 $state['phase'] = 'awaiting_roll';
@@ -434,7 +443,7 @@ class GameEngineService
                 $state['phase'] = 'awaiting_roll';
                 $state['dice'] = null;
                 $state['consecutive_sixes'] = 0;
-                $state = $this->advanceTurn($match, $state);
+                $state = $this->advanceTurn($match, $state, $broadcasts);
                 $turnPassed = true;
             }
 
@@ -453,6 +462,16 @@ class GameEngineService
                 'state' => $state,
             ];
         });
+
+        $this->flushBroadcasts($broadcasts);
+
+        // Best-effort, off the request path: persist the ordered replay log only
+        // AFTER the match-ending transaction has committed.
+        if (($result['winner'] ?? null) !== null) {
+            PersistMatchReplay::dispatch($match->id);
+        }
+
+        return $result;
     }
 
     /**
@@ -476,7 +495,7 @@ class GameEngineService
     /**
      * Advance the turn pointer to the next color that has not finished.
      */
-    private function advanceTurn(Matchup $match, array $state): array
+    private function advanceTurn(Matchup $match, array $state, array &$broadcasts): array
     {
         $order = $state['turn_order'];
         $count = count($order);
@@ -488,7 +507,7 @@ class GameEngineService
                 $state['turn'] = $next;
                 $state['consecutive_sixes'] = 0;
                 $this->appendEvent($match, $state, $next, 'turn_changed', ['turn' => $next]);
-                broadcast(new TurnChanged($match->id, $next));
+                $broadcasts[] = new TurnChanged($match->id, $next);
 
                 return $state;
             }
@@ -502,7 +521,7 @@ class GameEngineService
      * Finalize a completed match: mark the model, set winner, broadcast end,
      * and assign placements based on finished-token counts.
      */
-    private function finalizeMatch(Matchup $match, array &$state, string $winnerColor): void
+    private function finalizeMatch(Matchup $match, array &$state, string $winnerColor, array &$broadcasts): void
     {
         $this->appendEvent($match, $state, $winnerColor, 'game_ended', [
             'winner' => $winnerColor,
@@ -537,10 +556,7 @@ class GameEngineService
 
         $this->recordResults($match, $winningColors);
 
-        broadcast(new GameEnded($match->id, $winnerColor, $winnerPlayer?->user_id));
-
-        // Best-effort, off the request path: persist the ordered replay log.
-        PersistMatchReplay::dispatch($match->id);
+        $broadcasts[] = new GameEnded($match->id, $winnerColor, $winnerPlayer?->user_id);
     }
 
     /**
@@ -716,6 +732,21 @@ class GameEngineService
         $row->version = $row->version + 1;
         $row->updated_at = now();
         $row->save();
+    }
+
+    /**
+     * Dispatch the events queued during a transaction. Called only AFTER the
+     * surrounding DB::transaction has committed, so a peer reacting to an event
+     * can never GET a pre-commit (or rolled-back) state, and a queued broadcast
+     * worker can never run ahead of the commit.
+     *
+     * @param  array<int,\Illuminate\Contracts\Broadcasting\ShouldBroadcast>  $events
+     */
+    private function flushBroadcasts(array $events): void
+    {
+        foreach ($events as $event) {
+            broadcast($event);
+        }
     }
 
     /* =====================================================================

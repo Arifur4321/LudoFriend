@@ -22,6 +22,7 @@ import 'celebration.dart';
 import 'game_chat_state.dart';
 import 'game_config.dart';
 import 'game_session.dart';
+import 'match_state_gate.dart';
 import 'server_state_adapter.dart';
 
 /// Holds the [GameConfig] for the match about to be / currently played.
@@ -67,6 +68,8 @@ class GameController extends StateNotifier<GameSession> {
   late final DiceRoller _dice;
   bool _busy = false;
   bool _refreshing = false;
+  bool _refreshQueued = false;
+  final MatchStateGate _gate = MatchStateGate();
   StreamSubscription<RealtimeEvent>? _rtSub;
   Timer? _statePoll;
   int _lastAnimatedMoveSequence = -1;
@@ -253,45 +256,74 @@ class GameController extends StateNotifier<GameSession> {
   }
 
   Future<void> _refreshState() async {
-    if (!mounted || _busy || _refreshing || state.isMoving) return;
+    // A local action owns the state while it runs: never let a recovery refresh
+    // interrupt a roll (isRolling) or a move animation (isMoving), or race a
+    // roll/move HTTP call (_busy). Coalesce bursts: if a refresh is already in
+    // flight, remember to run one more afterwards so we always converge on the
+    // newest snapshot after a flurry of Reverb events.
+    if (!mounted || _busy || state.isMoving || state.isRolling) return;
+    if (_refreshing) {
+      _refreshQueued = true;
+      return;
+    }
     _refreshing = true;
     try {
       final res = await _ref
           .read(dioProvider)
           .get(ApiEndpoints.gameState(config.matchId!));
+      if (!mounted) return;
       final payload = _payload(res.data);
       final serverState = _asMap(payload['state']);
-      if (serverState != null) {
-        final turn = serverState['turn'] as String?;
-        final movable = turn != null && turn == config.myColor
-            ? ServerStateAdapter.movableIds(turn, payload['legal_moves'])
-            : const <String>[];
-        final lastMove = _moveFromState(serverState);
-        if (_lastSyncedGame == null) {
-          if (lastMove?.sequence != null) {
-            _lastAnimatedMoveSequence = lastMove!.sequence!;
-          }
-        } else if (lastMove != null &&
-            lastMove.sequence != null &&
-            lastMove.sequence! > _lastAnimatedMoveSequence &&
-            _canAnimateFromCurrentState(lastMove)) {
-          _lastAnimatedMoveSequence = lastMove.sequence!;
-          await _playMoveAnimation(lastMove);
-          if (!mounted) return;
-        } else if (lastMove?.sequence != null) {
+      if (serverState == null) return;
+      // Drop stale/duplicate/out-of-order snapshots up front, so a late poll can
+      // neither replay an old move animation nor revert a newer turn/dice state.
+      if (!_gate.shouldApply(_seqOf(serverState))) return;
+
+      final turn = serverState['turn'] as String?;
+      final movable = turn != null && turn == config.myColor
+          ? ServerStateAdapter.movableIds(turn, payload['legal_moves'])
+          : const <String>[];
+      final lastMove = _moveFromState(serverState);
+      if (_lastSyncedGame == null) {
+        if (lastMove?.sequence != null) {
           _lastAnimatedMoveSequence = lastMove!.sequence!;
         }
-        _applyServerState(serverState, movable: movable);
+      } else if (lastMove != null &&
+          lastMove.sequence != null &&
+          lastMove.sequence! > _lastAnimatedMoveSequence &&
+          _canAnimateFromCurrentState(lastMove)) {
+        _lastAnimatedMoveSequence = lastMove.sequence!;
+        await _playMoveAnimation(lastMove);
+        if (!mounted) return;
+      } else if (lastMove?.sequence != null) {
+        _lastAnimatedMoveSequence = lastMove!.sequence!;
       }
+      _applyServerState(serverState, movable: movable);
     } catch (e, st) {
       AppLogger.e('online state refresh failed', e, st);
     } finally {
       _refreshing = false;
+      // Run the coalesced follow-up only when no local action has since taken
+      // over, so recovery never fights an in-progress roll/move.
+      if (_refreshQueued) {
+        _refreshQueued = false;
+        if (mounted && !_busy && !state.isMoving && !state.isRolling) {
+          unawaited(_refreshState());
+        }
+      }
     }
   }
 
   Future<void> _sendRoll() async {
-    if (_busy || !state.canRoll || config.myColor == null) return;
+    // Atomic re-entrancy lock: the first valid tap acquires it; any further tap
+    // (fat-finger double tap, a queued gesture, or the turn-timer auto-act
+    // firing at the same instant) is ignored until this roll fully resolves, so
+    // exactly one roll request leaves the device per turn.
+    if (!_gate.beginSubmission()) return;
+    if (_busy || !state.canRoll || config.myColor == null) {
+      _gate.endSubmission();
+      return;
+    }
     final original = state;
     final actionId = [
       config.matchId,
@@ -355,6 +387,7 @@ class GameController extends StateNotifier<GameSession> {
       needsResync = true;
     } finally {
       _busy = false;
+      _gate.endSubmission();
     }
 
     if (needsResync && mounted) {
@@ -473,6 +506,14 @@ class GameController extends StateNotifier<GameSession> {
     int? displayedDice,
   }) {
     if (!mounted) return;
+    // Monotonic authoritative ordering: never let an older/duplicate snapshot
+    // replace a newer one already on screen. This is what stops a late poll or a
+    // re-delivered Reverb event from reverting a fresh roll and re-enabling the
+    // dice. Authoritative HTTP roll/move responses always carry a newer seq, so
+    // they still apply here.
+    final incomingSeq = _seqOf(serverState);
+    if (!_gate.shouldApply(incomingSeq)) return;
+    _gate.markApplied(incomingSeq);
     final game = ServerStateAdapter.toGameState(
       serverState: serverState,
       players: config.players,
@@ -582,4 +623,11 @@ class GameController extends StateNotifier<GameSession> {
 
   Map<String, dynamic>? _asMap(dynamic v) =>
       v is Map ? v.cast<String, dynamic>() : null;
+
+  /// The authoritative monotonic sequence stamped on a server snapshot, or null
+  /// if absent (older payloads / unexpected shapes — the gate then fails open).
+  int? _seqOf(Map<String, dynamic> serverState) {
+    final raw = serverState['seq'];
+    return raw is num ? raw.toInt() : null;
+  }
 }

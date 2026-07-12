@@ -91,7 +91,9 @@ class RoomService
      */
     public function join(GameRoom $room, User $user): GameRoomPlayer
     {
-        return DB::transaction(function () use ($room, $user) {
+        $broadcasts = [];
+
+        $player = DB::transaction(function () use ($room, $user, &$broadcasts) {
             /** @var GameRoom $room */
             $room = GameRoom::whereKey($room->id)->lockForUpdate()->firstOrFail();
 
@@ -115,10 +117,14 @@ class RoomService
 
             $player = $this->seatPlayer($room, $user);
 
-            broadcast(new PlayerJoinedRoom($room->id, $player->id));
+            $broadcasts[] = new PlayerJoinedRoom($room->id, $player->id);
 
             return $player;
         });
+
+        $this->flushBroadcasts($broadcasts);
+
+        return $player;
     }
 
     /**
@@ -127,7 +133,9 @@ class RoomService
      */
     public function leave(GameRoom $room, User $user): void
     {
-        DB::transaction(function () use ($room, $user) {
+        $broadcasts = [];
+
+        DB::transaction(function () use ($room, $user, &$broadcasts) {
             $room = GameRoom::whereKey($room->id)->lockForUpdate()->firstOrFail();
 
             $seat = $room->players()->where('user_id', $user->id)->first();
@@ -137,7 +145,7 @@ class RoomService
 
             $seatId = $seat->id;
             $seat->delete();
-            broadcast(new PlayerLeftRoom($room->id, $seatId, $user->id));
+            $broadcasts[] = new PlayerLeftRoom($room->id, $seatId, $user->id);
 
             $remaining = $room->players()->whereNotNull('user_id')->where('is_bot', false)->get();
 
@@ -151,6 +159,8 @@ class RoomService
                 $room->update(['host_user_id' => $remaining->first()->user_id]);
             }
         });
+
+        $this->flushBroadcasts($broadcasts);
     }
 
     /**
@@ -174,7 +184,9 @@ class RoomService
      */
     public function start(GameRoom $room): Matchup
     {
-        return DB::transaction(function () use ($room) {
+        $broadcasts = [];
+
+        $match = DB::transaction(function () use ($room, &$broadcasts) {
             $room = GameRoom::whereKey($room->id)->lockForUpdate()->firstOrFail();
 
             if (! $room->isLobby()) {
@@ -263,10 +275,14 @@ class RoomService
 
             $room->update(['status' => 'in_progress']);
 
-            broadcast(new GameStarted($room->id, $match->id, $turnOrder));
+            $broadcasts[] = new GameStarted($room->id, $match->id, $turnOrder);
 
             return $match->fresh(['players', 'state']);
         });
+
+        $this->flushBroadcasts($broadcasts);
+
+        return $match;
     }
 
     /**
@@ -378,5 +394,19 @@ class RoomService
         } while (GameRoom::where('code', $code)->exists());
 
         return $code;
+    }
+
+    /**
+     * Dispatch the events queued during a transaction, only AFTER it has
+     * committed — so a peer reacting to a lobby/start event can never fetch a
+     * pre-commit (or rolled-back) room/match state.
+     *
+     * @param  array<int,\Illuminate\Contracts\Broadcasting\ShouldBroadcast>  $events
+     */
+    private function flushBroadcasts(array $events): void
+    {
+        foreach ($events as $event) {
+            broadcast($event);
+        }
     }
 }
