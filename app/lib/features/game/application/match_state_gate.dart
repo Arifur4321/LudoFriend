@@ -43,14 +43,24 @@ class MatchStateGate {
   /// turn.
   void endSubmission() => _submitting = false;
 
-  /// Whether an incoming snapshot carrying [incomingSeq] should be applied. A
-  /// snapshot that is not strictly newer than the last applied one is a stale,
-  /// duplicate, or out-of-order delivery and must be dropped so it can never
-  /// overwrite newer state, reset a valid rolling animation, restore an older
-  /// turn, or wrongly re-enable the dice. A `null` seq (no ordering info) fails
-  /// open and is applied.
-  bool shouldApply(int? incomingSeq) {
-    if (incomingSeq == null) return true;
+  /// Whether an incoming snapshot carrying [incomingSeq] should be applied.
+  ///
+  /// A snapshot that is not strictly newer than the last applied one is a
+  /// stale, duplicate, or out-of-order delivery and must be dropped so it can
+  /// never overwrite newer state, reset a valid rolling animation, restore an
+  /// older turn, or wrongly re-enable the dice.
+  ///
+  /// [allowEqual] permits re-applying the *same* seq (never an older one).
+  /// Recovery paths use this after an error left transient UI (highlights,
+  /// banners, phase flags) out of sync with the already-applied snapshot: the
+  /// re-apply is idempotent for the board, but rebuilds the derived UI state.
+  ///
+  /// A `null` seq means the payload carried no ordering information. That is
+  /// only trusted for the very first snapshot (bootstrap); afterwards an
+  /// unordered snapshot could be arbitrarily stale, so it is dropped.
+  bool shouldApply(int? incomingSeq, {bool allowEqual = false}) {
+    if (incomingSeq == null) return _appliedSeq < 0;
+    if (allowEqual && incomingSeq == _appliedSeq) return true;
     return incomingSeq > _appliedSeq;
   }
 

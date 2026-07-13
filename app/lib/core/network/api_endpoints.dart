@@ -11,6 +11,9 @@ abstract class ApiEndpoints {
   static const String facebook = '/auth/facebook';
   static const String google = '/auth/google';
 
+  /// The authenticated user — used to validate a stored token at startup.
+  static const String me = '/me';
+
   // Profile
   static const String profile = '/profile';
   static const String stats = '/profile/stats';
@@ -18,6 +21,7 @@ abstract class ApiEndpoints {
 
   // Friends / presence
   static const String friends = '/friends';
+  static const String friendsRecent = '/friends/recent';
   static const String friendsFacebook = '/friends/facebook';
   static const String invite = '/friends/invite';
   static const String friendsAccept = '/friends/accept';

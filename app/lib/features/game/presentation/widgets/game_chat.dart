@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../features/auth/application/auth_controller.dart';
 import '../../../../l10n/generated/app_localizations.dart';
 import '../../../../shared/theme/app_colors.dart';
 import '../../application/emoji_reactions.dart';
@@ -85,7 +86,12 @@ void flashEmoji(BuildContext context, String emoji, {String sender = ''}) {
           child: TweenAnimationBuilder<double>(
             tween: Tween(begin: 0, end: 1),
             duration: const Duration(milliseconds: 1400),
-            onEnd: entry.remove,
+            // Guarded removal: if the route/overlay was torn down first (e.g.
+            // the player left the match mid-animation), removing again would
+            // throw — `mounted` makes disposal race-free.
+            onEnd: () {
+              if (entry.mounted) entry.remove();
+            },
             builder: (ctx, t, _) => Opacity(
               opacity: (1 - t).clamp(0.0, 1.0),
               child: Transform.translate(
@@ -156,16 +162,57 @@ class _ChatSheetState extends ConsumerState<_ChatSheet> {
     final matchId = ref.read(currentMatchIdProvider);
     final chat = ref.read(gameChatProvider.notifier);
     if (matchId != null) {
-      final repo = ref.read(matchChatRepositoryProvider);
       final clientId = chat.addOptimistic(v);
-      repo.sendMessage(matchId, v, clientId: clientId).then(
-            (res) => res.when(ok: (_) {}, err: (_) => chat.markFailed(clientId)),
-          );
+      _deliver(matchId, v, clientId);
     } else {
       chat.addLocal(v);
     }
     _text.clear();
     _scrollToNewest();
+  }
+
+  /// POST the message and reconcile the optimistic bubble from the API
+  /// response itself. The Reverb echo usually gets there first — then the
+  /// response is a de-duplicated no-op — but when the echo is dropped (or the
+  /// send was an idempotent retry, which broadcasts nothing) this is what
+  /// resolves the bubble instead of leaving it pending forever.
+  void _deliver(String matchId, String text, String clientId) {
+    final chat = ref.read(gameChatProvider.notifier);
+    final myId = ref.read(authControllerProvider).valueOrNull?.id;
+    ref
+        .read(matchChatRepositoryProvider)
+        .sendMessage(matchId, text, clientId: clientId, myUserId: myId)
+        .then(
+          (res) => res.when(
+            ok: (msg) {
+              final id = msg.id;
+              if (id == null) return; // echo/history will reconcile
+              chat.applyServer(
+                id: id,
+                clientId: clientId,
+                sender: msg.sender,
+                avatarUrl: msg.avatarUrl,
+                color: msg.color,
+                text: msg.text,
+                isMe: true,
+                at: msg.at,
+              );
+            },
+            err: (_) => chat.markFailed(clientId),
+          ),
+        );
+  }
+
+  /// Tap-to-retry for a failed bubble: resends the SAME text with the SAME
+  /// client id, so however many retries race, the server stores at most one.
+  void _retry(ChatMessage m) {
+    final matchId = ref.read(currentMatchIdProvider);
+    final clientId = m.clientId;
+    if (matchId == null || clientId == null) return;
+    final pendingAgain =
+        ref.read(gameChatProvider.notifier).retryFailed(clientId);
+    if (pendingAgain == null) return; // already reconciled meanwhile
+    _deliver(matchId, pendingAgain.text, clientId);
   }
 
   @override
@@ -203,7 +250,10 @@ class _ChatSheetState extends ConsumerState<_ChatSheet> {
                     itemCount: messages.length,
                     itemBuilder: (ctx, i) {
                       final m = messages[messages.length - 1 - i];
-                      return _MessageBubble(message: m);
+                      return _MessageBubble(
+                        message: m,
+                        onRetry: m.failed ? () => _retry(m) : null,
+                      );
                     },
                   ),
           ),
@@ -265,9 +315,21 @@ class _ChatSheetState extends ConsumerState<_ChatSheet> {
 }
 
 class _MessageBubble extends StatelessWidget {
-  const _MessageBubble({required this.message});
+  const _MessageBubble({required this.message, this.onRetry});
 
   final ChatMessage message;
+
+  /// Non-null only for a failed bubble: tapping it resends the message with
+  /// the same idempotency key, so it recovers instead of being lost.
+  final VoidCallback? onRetry;
+
+  String? _timeLabel(DateTime? at) {
+    if (at == null) return null;
+    final t = at.toLocal();
+    final hh = t.hour.toString().padLeft(2, '0');
+    final mm = t.minute.toString().padLeft(2, '0');
+    return '$hh:$mm';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -298,25 +360,56 @@ class _MessageBubble extends StatelessWidget {
       ),
     );
 
-    final statusIcon = (m.pending || m.failed)
+    final time = _timeLabel(m.at);
+    final timeLabel = (time != null && !m.pending && !m.failed)
         ? Padding(
-            padding: const EdgeInsets.only(left: 4),
-            child: Icon(
-              m.failed ? Icons.error_outline_rounded : Icons.schedule_rounded,
-              size: 14,
-              color: m.failed ? Colors.redAccent : AppColors.inkSoft,
+            padding: const EdgeInsets.only(left: 4, right: 4, bottom: 4),
+            child: Text(
+              time,
+              style: const TextStyle(fontSize: 10, color: AppColors.inkSoft),
             ),
           )
         : null;
 
+    final statusIcon = (m.pending || m.failed)
+        ? Padding(
+            padding: const EdgeInsets.only(left: 4),
+            child: m.failed
+                ? const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.refresh_rounded,
+                          size: 14, color: Colors.redAccent),
+                      SizedBox(width: 2),
+                      Text('Tap to retry',
+                          style: TextStyle(
+                              fontSize: 10, color: Colors.redAccent)),
+                    ],
+                  )
+                : const Icon(Icons.schedule_rounded,
+                    size: 14, color: AppColors.inkSoft),
+          )
+        : null;
+
     if (m.isMe) {
+      final row = Row(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          if (timeLabel != null) timeLabel,
+          bubble,
+          if (statusIcon != null) statusIcon,
+        ],
+      );
       return Align(
         alignment: Alignment.centerRight,
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [bubble, if (statusIcon != null) statusIcon],
-        ),
+        child: m.failed && onRetry != null
+            ? InkWell(
+                borderRadius: BorderRadius.circular(16),
+                onTap: onRetry,
+                child: row,
+              )
+            : row,
       );
     }
 
@@ -329,6 +422,7 @@ class _MessageBubble extends StatelessWidget {
           _SenderAvatar(sender: m.sender, avatarUrl: m.avatarUrl, color: m.color),
           const SizedBox(width: 6),
           bubble,
+          if (timeLabel != null) timeLabel,
         ],
       ),
     );

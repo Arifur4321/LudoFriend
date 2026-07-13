@@ -73,9 +73,11 @@ class GameController extends StateNotifier<GameSession> {
   bool _refreshQueued = false;
   final MatchStateGate _gate = MatchStateGate();
   StreamSubscription<RealtimeEvent>? _rtSub;
+  StreamSubscription<String>? _wsConnSub;
   Timer? _statePoll;
   int _lastAnimatedMoveSequence = -1;
   int _rollActionSequence = 0;
+  int _moveActionSequence = 0;
 
   /// Last authoritative snapshot applied in an online match, used to detect
   /// home-arrivals / captures / the win from state diffs so BOTH players get
@@ -107,16 +109,32 @@ class GameController extends StateNotifier<GameSession> {
 
   @override
   void dispose() {
+    // Every step is individually guarded so one failing teardown can never
+    // skip the rest — otherwise a single throw could leak the Reverb
+    // subscription or leave the recovery timer running after the screen is
+    // gone (the "ghost listener" that re-applies stale state).
     _rtSub?.cancel();
+    _rtSub = null;
+    _wsConnSub?.cancel();
+    _wsConnSub = null;
     _statePoll?.cancel();
+    _statePoll = null;
     if (_online) {
-      final id = int.tryParse(config.matchId ?? '');
-      if (id != null) {
-        _ref.read(realtimeMatchServiceProvider).leaveMatch(id);
+      try {
+        final id = int.tryParse(config.matchId ?? '');
+        if (id != null) {
+          _ref.read(realtimeMatchServiceProvider).leaveMatch(id);
+        }
+      } catch (e, st) {
+        AppLogger.e('leaveMatch during dispose failed', e, st);
       }
-      _ref.read(currentMatchIdProvider.notifier).state = null;
-      _ref.read(gameChatProvider.notifier).clear();
-      _ref.read(emojiReactionsProvider.notifier).clear();
+      try {
+        _ref.read(currentMatchIdProvider.notifier).state = null;
+        _ref.read(gameChatProvider.notifier).clear();
+        _ref.read(emojiReactionsProvider.notifier).clear();
+      } catch (e, st) {
+        AppLogger.e('match-scope cleanup during dispose failed', e, st);
+      }
     }
     super.dispose();
   }
@@ -243,7 +261,19 @@ class GameController extends StateNotifier<GameSession> {
     _ref.read(gameChatProvider.notifier).clear();
     _ref.read(emojiReactionsProvider.notifier).clear();
     final realtime = _ref.read(realtimeMatchServiceProvider);
+    // Exactly ONE event listener per controller: cancel any earlier one first
+    // so a re-entered init can never stack duplicate listeners.
+    await _rtSub?.cancel();
     _rtSub = realtime.events.listen(_onRealtimeEvent);
+    // After every WebSocket (re)connect, re-fetch the bounded chat history so
+    // messages sent while this device was offline appear. The store
+    // de-duplicates by server id, so however many reconnects happen, each
+    // message shows exactly once — and this listener is the ONLY reconnect
+    // hook, cancelled with the controller, so reconnects never stack extras.
+    await _wsConnSub?.cancel();
+    _wsConnSub = _ref.read(webSocketServiceProvider).connections.listen((_) {
+      if (mounted) unawaited(_loadChatHistory());
+    });
     final matchId = int.tryParse(config.matchId ?? '');
     if (matchId != null) {
       await realtime.joinMatch(matchId);
@@ -256,6 +286,8 @@ class GameController extends StateNotifier<GameSession> {
     // taking their turn. Without it, one missed event leaves the dice disabled
     // forever on the other device.
     if (mounted) {
+      // Exactly ONE recovery timer per match: never stack a second one.
+      _statePoll?.cancel();
       _statePoll = Timer.periodic(
         const Duration(seconds: 2),
         (_) => _refreshState(),
@@ -279,13 +311,21 @@ class GameController extends StateNotifier<GameSession> {
     );
   }
 
-  Future<void> _refreshState() async {
+  /// Fetch and apply the authoritative snapshot.
+  ///
+  /// [force] re-applies a snapshot even when its `seq` equals the one already
+  /// applied. Error-recovery paths use it: after a failed roll/move the board
+  /// may have lost derived UI state (token highlights, phase banner) that only
+  /// a re-apply can rebuild — the gate still rejects anything *older*.
+  Future<void> _refreshState({bool force = false}) async {
     // A local action owns the state while it runs: never let a recovery refresh
     // interrupt a roll (isRolling) or a move animation (isMoving), or race a
     // roll/move HTTP call (_busy). Coalesce bursts: if a refresh is already in
     // flight, remember to run one more afterwards so we always converge on the
     // newest snapshot after a flurry of Reverb events.
-    if (!mounted || _busy || state.isMoving || state.isRolling) return;
+    if (!mounted || (!force && (_busy || state.isMoving || state.isRolling))) {
+      return;
+    }
     if (_refreshing) {
       _refreshQueued = true;
       return;
@@ -296,12 +336,21 @@ class GameController extends StateNotifier<GameSession> {
           .read(dioProvider)
           .get(ApiEndpoints.gameState(config.matchId!));
       if (!mounted) return;
+      // A roll/move may have started while this fetch was in flight. The local
+      // action owns the screen now — processing this (possibly pre-action)
+      // snapshot would cancel its rolling/moving animation, so step aside and
+      // let the action's own response (which always carries a newer seq) win.
+      // The queued follow-up re-converges afterwards via the recovery timer.
+      if (!force && (_busy || state.isMoving || state.isRolling)) {
+        _refreshQueued = true;
+        return;
+      }
       final payload = _payload(res.data);
       final serverState = _asMap(payload['state']);
       if (serverState == null) return;
       // Drop stale/duplicate/out-of-order snapshots up front, so a late poll can
       // neither replay an old move animation nor revert a newer turn/dice state.
-      if (!_gate.shouldApply(_seqOf(serverState))) return;
+      if (!_gate.shouldApply(_seqOf(serverState), allowEqual: force)) return;
 
       final turn = serverState['turn'] as String?;
       final movable = turn != null && turn == config.myColor
@@ -322,7 +371,7 @@ class GameController extends StateNotifier<GameSession> {
       } else if (lastMove?.sequence != null) {
         _lastAnimatedMoveSequence = lastMove!.sequence!;
       }
-      _applyServerState(serverState, movable: movable);
+      _applyServerState(serverState, movable: movable, force: force);
     } catch (e, st) {
       AppLogger.e('online state refresh failed', e, st);
     } finally {
@@ -348,7 +397,6 @@ class GameController extends StateNotifier<GameSession> {
       _gate.endSubmission();
       return;
     }
-    final original = state;
     final actionId = [
       config.matchId,
       config.myColor,
@@ -390,22 +438,24 @@ class GameController extends StateNotifier<GameSession> {
           displayedDice: turnPassed ? null : dice,
         );
       } else {
-        state = GameSession(
-          game: original.game,
-          diceFace: original.diceFace,
-          lastMove: original.lastMove,
-          banner: 'Roll was not confirmed — tap the dice once to retry.',
-        );
+        // Malformed/empty body: stop the dice animation but do NOT rebuild the
+        // session from a pre-roll snapshot — that could paint state older than
+        // what the gate has already applied. The forced resync below re-applies
+        // the authoritative snapshot (same-seq allowed) and rebuilds the
+        // token highlights/banner from the server's truth.
+        state = state.copyWith(isRolling: false);
         needsResync = true;
       }
     } catch (e, st) {
       AppLogger.e('online roll failed', e, st);
       await minimumAnimation;
       if (!mounted) return;
-      state = GameSession(
-        game: original.game,
-        diceFace: original.diceFace,
-        lastMove: original.lastMove,
+      // Whether this was a network drop (roll may or may not have committed)
+      // or a 422 rejection (e.g. the turn-timer auto-roll won the race), the
+      // server knows best: clear the transient flag and force a resync instead
+      // of guessing with a locally-cached snapshot.
+      state = state.copyWith(
+        isRolling: false,
         banner: 'Connection interrupted — checking the game state…',
       );
       needsResync = true;
@@ -415,7 +465,7 @@ class GameController extends StateNotifier<GameSession> {
     }
 
     if (needsResync && mounted) {
-      await _refreshState();
+      await _refreshState(force: true);
       if (!mounted) return;
       state = state.copyWith(
         banner: state.canRoll
@@ -445,6 +495,15 @@ class GameController extends StateNotifier<GameSession> {
     final parts = tokenId.split('_');
     final color = parts.isNotEmpty ? parts[0] : (config.myColor ?? '');
     final token = int.tryParse(parts.length > 1 ? parts[1] : '') ?? 0;
+    // One stable id per physical tap: if the transport retries this request,
+    // the backend replays the first result instead of moving twice.
+    final actionId = [
+      config.matchId,
+      color,
+      token,
+      DateTime.now().microsecondsSinceEpoch,
+      _moveActionSequence++,
+    ].join('-');
     _busy = true;
     state = state.copyWith(
       isMoving: true,
@@ -454,10 +513,18 @@ class GameController extends StateNotifier<GameSession> {
     final minimumAnimation = Future<void>.delayed(
       _moveAnimationDuration(predicted),
     );
+    var needsResync = false;
     try {
       final res = await _ref.read(dioProvider).post(
         ApiEndpoints.moveToken(config.matchId!),
-        data: {'color': color, 'token': token},
+        data: {
+          'color': color,
+          'token': token,
+          'action_id': actionId,
+          // Assert the expected next seq so a stale duplicate of this request
+          // can never apply out of order server-side.
+          if (_gate.appliedSeq >= 0) 'seq': _gate.appliedSeq + 1,
+        },
       );
       final data = _payload(res.data);
       final serverState = _asMap(data['state']);
@@ -472,21 +539,41 @@ class GameController extends StateNotifier<GameSession> {
         // _applyServerState, so they fire identically for every player.
         _applyServerState(serverState);
       } else {
-        state = GameSession(
-          game: originalGame,
-          diceFace: originalGame.lastDice,
-          banner: 'Could not confirm the move — tap the pawn again.',
-        );
+        // Confirmed-but-unparseable response: never repaint from the local
+        // pre-move snapshot (that is exactly the walk-forward-then-snap-back
+        // bug). Drop the animation overlay and let the forced resync render
+        // the authoritative outcome.
+        state = state.copyWith(isMoving: false, lastMove: null);
+        needsResync = true;
       }
     } catch (e, st) {
       AppLogger.e('online move failed', e, st);
-      state = GameSession(
-        game: originalGame,
-        diceFace: originalGame.lastDice,
-        banner: 'Move failed — tap the pawn again.',
+      await minimumAnimation;
+      if (!mounted) return;
+      // Two very different situations end up here and BOTH must not repaint
+      // the old board:
+      //  - Network drop/timeout: the server may have committed the move. The
+      //    old "restore originalGame" behaviour made the token walk forward
+      //    and then jump back to its old cell until the next poll — the exact
+      //    reported bug. Keep the pre-move board (it was never mutated), drop
+      //    the overlay, and force-resync: if the move committed, the fresh
+      //    snapshot's last_move animates it forward properly (we intentionally
+      //    did NOT advance _lastAnimatedMoveSequence on this path).
+      //  - 422 rejection (stale phase after an auto-act race, illegal move):
+      //    the forced resync re-applies the server truth including the token
+      //    highlights, so the player can immediately act — no dead taps.
+      state = state.copyWith(
+        isMoving: false,
+        lastMove: null,
+        banner: 'Connection interrupted — checking the game state…',
       );
+      needsResync = true;
     } finally {
       _busy = false;
+    }
+
+    if (needsResync && mounted) {
+      await _refreshState(force: true);
     }
   }
 
@@ -528,15 +615,18 @@ class GameController extends StateNotifier<GameSession> {
     List<String> movable = const [],
     String? banner,
     int? displayedDice,
+    bool force = false,
   }) {
     if (!mounted) return;
     // Monotonic authoritative ordering: never let an older/duplicate snapshot
     // replace a newer one already on screen. This is what stops a late poll or a
     // re-delivered Reverb event from reverting a fresh roll and re-enabling the
     // dice. Authoritative HTTP roll/move responses always carry a newer seq, so
-    // they still apply here.
+    // they still apply here. [force] additionally allows re-applying the SAME
+    // seq (idempotent) so recovery can rebuild highlights/banners — an OLDER
+    // snapshot is still always rejected.
     final incomingSeq = _seqOf(serverState);
-    if (!_gate.shouldApply(incomingSeq)) return;
+    if (!_gate.shouldApply(incomingSeq, allowEqual: force)) return;
     _gate.markApplied(incomingSeq);
     final game = ServerStateAdapter.toGameState(
       serverState: serverState,
@@ -612,6 +702,7 @@ class GameController extends StateNotifier<GameSession> {
           final body = ev.data['body'] as String? ?? '';
           if (id == null || body.isEmpty) break;
           final myId = _ref.read(authControllerProvider).valueOrNull?.id;
+          final ts = ev.data['ts'] as String?;
           // De-duplicated + reconciled with any optimistic bubble by the store.
           _ref.read(gameChatProvider.notifier).applyServer(
                 id: id,
@@ -621,6 +712,7 @@ class GameController extends StateNotifier<GameSession> {
                 color: ev.data['color'] as String?,
                 text: body,
                 isMe: myId != null && ev.data['user_id']?.toString() == myId,
+                at: ts == null ? null : DateTime.tryParse(ts)?.toLocal(),
               );
         }
         break;

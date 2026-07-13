@@ -23,4 +23,12 @@ class SecureStorage {
 
   Future<String?> get guestId => read(AppConstants.kGuestId);
   Future<void> saveGuestId(String value) => write(AppConstants.kGuestId, value);
+
+  /// Cached user profile JSON (identity/display data only — never a secret).
+  /// Saved at login so the session can be restored offline; cleared on logout
+  /// and whenever the token is invalidated.
+  Future<String?> get cachedUser => read(AppConstants.kAuthUser);
+  Future<void> saveCachedUser(String json) =>
+      write(AppConstants.kAuthUser, json);
+  Future<void> clearCachedUser() => delete(AppConstants.kAuthUser);
 }

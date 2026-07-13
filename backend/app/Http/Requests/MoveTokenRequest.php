@@ -20,6 +20,10 @@ class MoveTokenRequest extends FormRequest
             'token' => ['required', 'integer', 'between:0,3'],
             // Optional anti-replay assertion: the client's expected next seq.
             'seq' => ['nullable', 'integer', 'min:1'],
+            // Stable for one physical tap. If transport retries the same HTTP
+            // request, the engine returns the first result instead of moving a
+            // second time (mirrors RollDiceRequest.action_id).
+            'action_id' => ['nullable', 'string', 'max:100', 'regex:/^[A-Za-z0-9_-]+$/'],
         ];
     }
 }

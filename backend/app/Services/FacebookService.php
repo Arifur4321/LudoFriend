@@ -39,6 +39,8 @@ class FacebookService
         $this->assertTokenAppMatches($accessToken);
 
         $response = Http::baseUrl($this->graphUrl)
+            ->timeout(10)
+            ->connectTimeout(5)
             ->get("/{$this->version}/me", [
                 'fields' => 'id,name,email,picture.type(large)',
                 'access_token' => $accessToken,
@@ -111,6 +113,8 @@ class FacebookService
     {
         try {
             $response = Http::baseUrl($this->graphUrl)
+                ->timeout(10)
+                ->connectTimeout(5)
                 ->get("/{$this->version}/me/friends", [
                     'fields' => 'id,name,picture.type(normal)',
                     'access_token' => $accessToken,
@@ -148,7 +152,12 @@ class FacebookService
             throw new RuntimeException('Facebook app credentials are not configured.');
         }
 
+        // The app access token ("app_id|app_secret") is composed here from
+        // server-side config only — it is never logged and never leaves this
+        // request. Timeouts keep a slow Graph API from hanging login requests.
         $response = Http::baseUrl($this->graphUrl)
+            ->timeout(10)
+            ->connectTimeout(5)
             ->get("/{$this->version}/debug_token", [
                 'input_token' => $accessToken,
                 'access_token' => "{$appId}|{$appSecret}",

@@ -41,8 +41,27 @@ class FacebookFriend {
 /// room codes / deep links when the `user_friends` permission is unavailable
 /// (handled in the friends feature, not here).
 class FacebookAuthService {
+  /// Guards against overlapping native SDK calls: a second `login()` while the
+  /// Facebook dialog is already open makes the SDK fail BOTH attempts on some
+  /// devices ("only one login at a time"), which is a classic source of
+  /// "sometimes it works, sometimes it doesn't".
+  bool _loginInFlight = false;
+
   Future<FacebookProfile?> login() async {
     _ensureEnabled();
+    if (_loginInFlight) {
+      AppLogger.auth('Facebook login tap ignored: dialog already open');
+      return null;
+    }
+    _loginInFlight = true;
+    try {
+      return await _loginOnce(allowRetry: true);
+    } finally {
+      _loginInFlight = false;
+    }
+  }
+
+  Future<FacebookProfile?> _loginOnce({required bool allowRetry}) async {
     AppLogger.auth('Facebook login started');
     final result = await FacebookAuth.instance.login(
       // public_profile → name + photo. `user_friends` is intentionally NOT
@@ -64,6 +83,20 @@ class FacebookAuthService {
 
     if (result.status == LoginStatus.cancelled) return null;
     if (result.status != LoginStatus.success || token == null) {
+      // A failed attempt can leave the native SDK holding a half-open session
+      // (stale token from a previous account, an interrupted dialog, or an app
+      // switch mid-login). Clear it and retry exactly once — this converts the
+      // most common intermittent failure into a successful login, and also
+      // makes account switching reliable.
+      if (allowRetry) {
+        AppLogger.auth('Facebook login failed — clearing SDK state, retrying');
+        try {
+          await FacebookAuth.instance.logOut();
+        } catch (_) {
+          // Nothing to clear — proceed with the retry regardless.
+        }
+        return _loginOnce(allowRetry: false);
+      }
       throw SocialAuthException(
         result.message ?? 'Facebook sign-in could not be completed.',
       );

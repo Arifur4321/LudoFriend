@@ -77,9 +77,38 @@ void main() {
       expect(gate.appliedSeq, 5);
     });
 
-    test('a null seq fails open so older payload shapes still apply', () {
-      final gate = MatchStateGate()..markApplied(9);
+    test('a null seq is trusted only for the bootstrap snapshot', () {
+      final gate = MatchStateGate();
+      // First snapshot ever: nothing applied yet, so an unordered payload is
+      // better than an empty board.
       expect(gate.shouldApply(null), isTrue);
+      gate.markApplied(9);
+      // After that, an unordered snapshot could be arbitrarily stale — a token
+      // must never walk forward and then be dragged back by it.
+      expect(gate.shouldApply(null), isFalse);
+    });
+  });
+
+  group('MatchStateGate — forced recovery re-apply', () {
+    test('allowEqual re-applies the SAME seq but never an older one', () {
+      final gate = MatchStateGate()..markApplied(7);
+      // Normal path: duplicate dropped.
+      expect(gate.shouldApply(7), isFalse);
+      // Recovery path (after a failed roll/move): the same authoritative
+      // snapshot may be re-applied to rebuild highlights/banners...
+      expect(gate.shouldApply(7, allowEqual: true), isTrue);
+      // ...but an older snapshot stays rejected even when forced.
+      expect(gate.shouldApply(6, allowEqual: true), isFalse);
+      expect(gate.shouldApply(3, allowEqual: true), isFalse);
+      // And newer still applies, forced or not.
+      expect(gate.shouldApply(8, allowEqual: true), isTrue);
+    });
+
+    test('forced re-apply does not disturb the submission lock', () {
+      final gate = MatchStateGate()..markApplied(4);
+      expect(gate.beginSubmission(), isTrue);
+      expect(gate.shouldApply(4, allowEqual: true), isTrue);
+      expect(gate.isSubmitting, isTrue); // recovery never unlocks a new roll
     });
   });
 }

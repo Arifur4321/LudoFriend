@@ -18,6 +18,7 @@ class ChatMessage {
     this.isEmoji = false,
     this.pending = false,
     this.failed = false,
+    this.at,
     required this.sortKey,
   });
 
@@ -31,6 +32,10 @@ class ChatMessage {
   final bool isEmoji;
   final bool pending;
   final bool failed;
+
+  /// Server timestamp (authoritative for confirmed messages; the local send
+  /// time for a still-pending optimistic bubble). Shown as HH:mm in the UI.
+  final DateTime? at;
 
   /// Ordering key: the server id for confirmed messages; a large synthetic key
   /// for still-pending optimistic bubbles so they sort to the bottom (newest).
@@ -48,6 +53,7 @@ class ChatMessage {
         isEmoji: isEmoji,
         pending: pending ?? this.pending,
         failed: failed ?? this.failed,
+        at: at,
         sortKey: sortKey ?? this.sortKey,
       );
 }
@@ -100,6 +106,7 @@ class GameChatController extends StateNotifier<List<ChatMessage>> {
         text: text,
         isMe: true,
         pending: true,
+        at: DateTime.now(),
         sortKey: key,
       ),
     ];
@@ -116,6 +123,22 @@ class GameChatController extends StateNotifier<List<ChatMessage>> {
     ];
   }
 
+  /// Flip a failed bubble back to pending for a retry, returning it so the
+  /// caller can resend the SAME text with the SAME [clientId] — the server's
+  /// unique(match_id, client_id) then guarantees at most one stored message no
+  /// matter how many retries raced. Returns null when there is nothing to
+  /// retry (e.g. the echo reconciled it in the meantime).
+  ChatMessage? retryFailed(String clientId) {
+    ChatMessage? target;
+    state = [
+      for (final m in state)
+        (m.id == null && m.clientId == clientId && m.failed)
+            ? (target = m.copyWith(pending: true, failed: false))
+            : m,
+    ];
+    return target;
+  }
+
   /// Apply an authoritative server message (Reverb echo or history). Ignores a
   /// message whose id was already applied; reconciles a matching optimistic
   /// bubble in place; otherwise inserts in id order.
@@ -128,6 +151,7 @@ class GameChatController extends StateNotifier<List<ChatMessage>> {
     required String text,
     required bool isMe,
     bool isEmoji = false,
+    DateTime? at,
   }) {
     if (_serverIds.contains(id)) return;
     _serverIds.add(id);
@@ -141,6 +165,7 @@ class GameChatController extends StateNotifier<List<ChatMessage>> {
       text: text,
       isMe: isMe,
       isEmoji: isEmoji,
+      at: at,
       sortKey: id,
     );
 

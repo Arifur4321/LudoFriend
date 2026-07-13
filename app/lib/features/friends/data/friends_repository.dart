@@ -15,6 +15,8 @@ class AppFriend {
     this.avatar,
     this.isGuest = false,
     this.online = false,
+    this.isFriend = true,
+    this.games = 0,
   });
 
   final int id;
@@ -23,12 +25,20 @@ class AppFriend {
   final bool isGuest;
   final bool online;
 
+  /// False for a recent player you haven't added as a friend yet.
+  final bool isFriend;
+
+  /// Completed matches together (recent-players list only).
+  final int games;
+
   factory AppFriend.fromJson(Map<String, dynamic> j) => AppFriend(
         id: (j['id'] as num).toInt(),
         name: j['name'] as String? ?? 'Player',
         avatar: j['avatar'] as String?,
         isGuest: j['is_guest'] as bool? ?? false,
         online: j['online'] as bool? ?? false,
+        isFriend: j['is_friend'] as bool? ?? true,
+        games: (j['games'] as num?)?.toInt() ?? 0,
       );
 }
 
@@ -39,6 +49,12 @@ class FriendsRepository {
 
   /// Accepted friends (any provider / friend-code).
   Future<Result<List<AppFriend>>> list() => _fetch(ApiEndpoints.friends);
+
+  /// Players you recently completed a match with (any auth type, including
+  /// guests), newest first. Recorded automatically by the backend when a
+  /// match finishes, so a rematch invite is always one tap away.
+  Future<Result<List<AppFriend>>> recentPlayers() =>
+      _fetch(ApiEndpoints.friendsRecent);
 
   /// Facebook friends who also play this app (mapped to internal users). Empty
   /// unless the account is Facebook-linked with the user_friends permission.

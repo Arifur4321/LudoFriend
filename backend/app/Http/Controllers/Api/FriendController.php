@@ -10,6 +10,7 @@ use App\Http\Requests\InviteToRoomRequest;
 use App\Http\Resources\UserResource;
 use App\Models\FriendLink;
 use App\Models\GameRoom;
+use App\Models\RecentPlayer;
 use App\Models\SocialAccount;
 use App\Models\User;
 use App\Services\FacebookService;
@@ -37,6 +38,48 @@ class FriendController extends Controller
         ])->values();
 
         return response()->json(['data' => $friends]);
+    }
+
+    /**
+     * List the authenticated user's recently played opponents (most recent
+     * first), with online + already-friend flags. Populated automatically by
+     * the game engine when a match completes; works identically for Facebook,
+     * Google, email and guest accounts.
+     */
+    public function recent(Request $request): JsonResponse
+    {
+        $userId = $request->user()->id;
+
+        $rows = RecentPlayer::where('user_id', $userId)
+            ->orderByDesc('last_played_at')
+            ->limit(30)
+            ->with('otherUser')
+            ->get();
+
+        $friendIds = FriendLink::where('user_id', $userId)
+            ->accepted()
+            ->pluck('friend_user_id')
+            ->flip();
+
+        $players = $rows->map(function (RecentPlayer $r) use ($friendIds) {
+            $u = $r->otherUser;
+            if (! $u) {
+                return null;
+            }
+
+            return [
+                'id' => $u->id,
+                'name' => $u->name,
+                'avatar' => $u->avatar,
+                'is_guest' => (bool) $u->is_guest,
+                'online' => (bool) Cache::get("presence:online:{$u->id}", false),
+                'is_friend' => $friendIds->has($u->id),
+                'games' => (int) $r->games,
+                'last_played_at' => optional($r->last_played_at)->toIso8601String(),
+            ];
+        })->filter()->values();
+
+        return response()->json(['data' => $players]);
     }
 
     /**
@@ -169,7 +212,10 @@ class FriendController extends Controller
 
         $friendId = (int) $request->integer('friend_user_id');
 
-        // Anti-spam: only accepted friends (either direction) may be invited.
+        // Anti-spam: only accepted friends (either direction) or players you
+        // recently completed a match with may be invited. Recent players are
+        // recorded by the engine at match completion, so "invite them again
+        // next time" works even before a formal friend link exists.
         $areFriends = FriendLink::where('status', 'accepted')
             ->where(function ($q) use ($user, $friendId) {
                 $q->where(function ($w) use ($user, $friendId) {
@@ -182,8 +228,12 @@ class FriendController extends Controller
             })
             ->exists();
 
-        if (! $areFriends) {
-            return response()->json(['message' => 'You can only invite friends.'], 403);
+        $recentlyPlayed = $areFriends ? false : RecentPlayer::where('user_id', $user->id)
+            ->where('other_user_id', $friendId)
+            ->exists();
+
+        if (! $areFriends && ! $recentlyPlayed) {
+            return response()->json(['message' => 'You can only invite friends or recent players.'], 403);
         }
 
         broadcast(new FriendRoomInvite(

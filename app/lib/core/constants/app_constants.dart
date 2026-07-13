@@ -19,6 +19,12 @@ abstract class AppConstants {
   static const String kAuthToken = 'auth_token';
   static const String kGuestId = 'guest_id';
 
+  /// Cached JSON of the signed-in user, written alongside the Sanctum token.
+  /// Lets the app restore the session instantly on launch and stay signed in
+  /// when the network is briefly unavailable (the token itself remains the
+  /// only credential; this is display/identity data, never a secret).
+  static const String kAuthUser = 'auth_user';
+
   // Prefs keys.
   static const String kSoundEnabled = 'sound_enabled';
   static const String kMusicEnabled = 'music_enabled';

@@ -27,6 +27,16 @@ class RealtimeMatchService {
   final Set<String> _joined = {};
   final Set<String> _subscribing = {};
   final Map<String, Timer> _authRetries = {};
+
+  /// Reference counts per channel. During a rematch / controller rebuild the
+  /// NEW GameController can join the match channel before the OLD one is
+  /// disposed; with a plain set, the old controller's leave would tear down
+  /// the subscription the new controller depends on, silently killing live
+  /// updates (the board then limps along on the 2s recovery poll only). With
+  /// refcounts, the socket subscription exists exactly while at least one
+  /// consumer needs it — one real subscription per channel, never zero, never
+  /// duplicated.
+  final Map<String, int> _refs = {};
   late final StreamSubscription<String> _connectionSub;
 
   Stream<RealtimeEvent> get events => _ws.events;
@@ -40,7 +50,8 @@ class RealtimeMatchService {
 
   Future<void> _joinPrivate(String name) async {
     final channel = 'private-$name';
-    if (!_joined.add(channel)) return;
+    _refs[channel] = (_refs[channel] ?? 0) + 1;
+    if (!_joined.add(channel)) return; // already subscribed (or subscribing)
 
     await _subscribePrivate(channel);
   }
@@ -74,6 +85,12 @@ class RealtimeMatchService {
 
   Future<void> _leave(String name) async {
     final channel = 'private-$name';
+    final remaining = (_refs[channel] ?? 0) - 1;
+    if (remaining > 0) {
+      _refs[channel] = remaining;
+      return; // another consumer (e.g. the rebuilt controller) still needs it
+    }
+    _refs.remove(channel);
     if (_joined.remove(channel)) {
       _authRetries.remove(channel)?.cancel();
       await _ws.unsubscribe(channel);
@@ -128,6 +145,7 @@ class RealtimeMatchService {
       await _ws.unsubscribe(c);
     }
     _joined.clear();
+    _refs.clear();
     for (final timer in _authRetries.values) {
       timer.cancel();
     }

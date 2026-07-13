@@ -91,4 +91,55 @@ void main() {
     applyMsg(c, 1);
     expect(c.state.length, 1);
   });
+
+  test('retryFailed flips the bubble back to pending and returns it', () {
+    final c = GameChatController();
+    final clientId = c.addOptimistic('retry me');
+    c.markFailed(clientId);
+
+    final again = c.retryFailed(clientId);
+
+    expect(again, isNotNull);
+    expect(again!.text, 'retry me');
+    expect(again.clientId, clientId);
+    expect(c.state.single.pending, isTrue);
+    expect(c.state.single.failed, isFalse);
+    // The eventual echo (or API response) still reconciles into ONE message.
+    applyMsg(c, 9, clientId: clientId, text: 'retry me', isMe: true);
+    expect(c.state.length, 1);
+    expect(c.state.single.id, 9);
+  });
+
+  test('retryFailed is a no-op once the message was reconciled', () {
+    final c = GameChatController();
+    final clientId = c.addOptimistic('landed after all');
+    c.markFailed(clientId);
+    // The lost echo arrives late and reconciles the bubble...
+    applyMsg(c, 10, clientId: clientId, text: 'landed after all', isMe: true);
+    // ...so a subsequent retry tap must find nothing to resend.
+    expect(c.retryFailed(clientId), isNull);
+    expect(c.state.length, 1);
+  });
+
+  test('API response and Reverb echo for the same send display once', () {
+    final c = GameChatController();
+    final clientId = c.addOptimistic('hello');
+    // API response reconciles first...
+    c.applyServer(
+        id: 11, clientId: clientId, sender: 'Me', text: 'hello', isMe: true);
+    // ...then the Reverb echo (same server id) arrives — deduped.
+    c.applyServer(
+        id: 11, clientId: clientId, sender: 'Me', text: 'hello', isMe: true);
+    expect(c.state.length, 1);
+    expect(c.state.single.id, 11);
+    expect(c.state.single.pending, isFalse);
+  });
+
+  test('server timestamp is preserved for display', () {
+    final c = GameChatController();
+    final at = DateTime.parse('2026-07-13T18:30:00Z');
+    c.applyServer(
+        id: 12, sender: 'Alice', text: 'timed', isMe: false, at: at);
+    expect(c.state.single.at, at);
+  });
 }

@@ -25,6 +25,7 @@ class FriendsScreen extends ConsumerStatefulWidget {
 class _FriendsScreenState extends ConsumerState<FriendsScreen> {
   final _code = TextEditingController();
   final Map<int, AppFriend> _friends = {};
+  List<AppFriend> _recent = const [];
   bool _loading = true;
   bool _syncing = false;
   Timer? _presence;
@@ -61,6 +62,15 @@ class _FriendsScreenState extends ConsumerState<FriendsScreen> {
         _loading = false;
       }),
       err: (_) => setState(() => _loading = false),
+    );
+
+    // Recently played opponents (all auth types, including guests) — recorded
+    // by the server after every completed match, so a rematch is one tap away.
+    final recent = await repo.recentPlayers();
+    if (!mounted) return;
+    recent.when(
+      ok: (players) => setState(() => _recent = players),
+      err: (_) {}, // non-critical — the friends list above still works
     );
   }
 
@@ -215,6 +225,26 @@ class _FriendsScreenState extends ConsumerState<FriendsScreen> {
                       _FriendTile(friend: f, onInvite: () => _invite(f)),
                   ],
                 ),
+              if (_recent.isNotEmpty) ...[
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(4, 8, 4, 8),
+                  child: Text('Recently played',
+                      style:
+                          AppTextStyles.label.copyWith(color: Colors.white)),
+                ),
+                _Card(
+                  children: [
+                    for (final p in _recent.where((r) => !_friends.containsKey(r.id)))
+                      _FriendTile(
+                        friend: p,
+                        onInvite: () => _invite(p),
+                        subtitle: p.games > 1
+                            ? '${p.games} matches together'
+                            : 'Played together recently',
+                      ),
+                  ],
+                ),
+              ],
             ],
           ),
         ),
@@ -224,9 +254,13 @@ class _FriendsScreenState extends ConsumerState<FriendsScreen> {
 }
 
 class _FriendTile extends StatelessWidget {
-  const _FriendTile({required this.friend, this.onInvite});
+  const _FriendTile({required this.friend, this.onInvite, this.subtitle});
   final AppFriend friend;
   final VoidCallback? onInvite;
+
+  /// Optional custom subtitle (e.g. "3 matches together" for recent players);
+  /// defaults to the online/offline label.
+  final String? subtitle;
 
   @override
   Widget build(BuildContext context) {
@@ -263,7 +297,8 @@ class _FriendTile extends StatelessWidget {
         ],
       ),
       title: Text(friend.name, style: AppTextStyles.body),
-      subtitle: Text(friend.online ? 'Online' : 'Offline',
+      subtitle: Text(
+          subtitle ?? (friend.online ? 'Online' : 'Offline'),
           style: AppTextStyles.bodyMuted),
       trailing: onInvite == null
           ? null

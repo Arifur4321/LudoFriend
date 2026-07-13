@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:math';
 
 import 'package:dio/dio.dart';
@@ -140,6 +141,53 @@ class AuthRepository {
     }
   }
 
+  /// Restore the previous session from secure storage, so returning users go
+  /// straight to Home instead of the login screen.
+  ///
+  ///  - No stored token → null (show login).
+  ///  - Token rejected by the server (401/403/419) → the session is genuinely
+  ///    over: clear the token + cached user and return null (show login).
+  ///  - Network/server unavailable → do NOT log the user out. Return the
+  ///    cached user (offline session) if one exists; the token stays put and
+  ///    every later request keeps sending it, so the session self-heals when
+  ///    connectivity returns.
+  Future<AuthUser?> restoreSession() async {
+    final savedToken = await _storage.token;
+    if (savedToken == null || savedToken.isEmpty) {
+      AppLogger.auth('restoreSession: no stored token');
+      return null;
+    }
+
+    try {
+      final res = await _dio.get(ApiEndpoints.me);
+      final user = _userFromResponse(res.data);
+      await _cacheUser(user);
+      AppLogger.auth('restoreSession: token valid, session restored');
+      return user;
+    } on DioException catch (e) {
+      final status = e.response?.statusCode;
+      if (status == 401 || status == 403 || status == 419) {
+        // The token is invalid/expired/revoked — clear it safely.
+        AppLogger.auth('restoreSession: token rejected ($status); cleared');
+        await _storage.clearToken();
+        await _storage.clearCachedUser();
+        return null;
+      }
+      // Offline / server hiccup: keep the token, restore from cache if we can.
+      final cached = await _readCachedUser();
+      AppLogger.auth(
+        'restoreSession: network unavailable ($status); '
+        'cached user ${cached == null ? 'absent' : 'used'}',
+      );
+      return cached;
+    } catch (e, st) {
+      AppLogger.e('restoreSession: unexpected error', e, st);
+      // Fail safe: don't wipe credentials for a client-side bug; just show
+      // the login screen this launch.
+      return null;
+    }
+  }
+
   Future<void> logout() async {
     try {
       await _dio.post(ApiEndpoints.logout);
@@ -147,6 +195,7 @@ class AuthRepository {
       // ignore network errors on logout
     }
     await _storage.clearToken();
+    await _storage.clearCachedUser();
   }
 
   Future<void> _persist(AuthUser user) async {
@@ -156,6 +205,28 @@ class AuthRepository {
       AppLogger.auth('Sanctum token saved=true');
     } else {
       AppLogger.auth('Sanctum token saved=false');
+    }
+    await _cacheUser(user);
+  }
+
+  /// Cache identity/display data (never the token) for offline restoration.
+  Future<void> _cacheUser(AuthUser user) async {
+    try {
+      await _storage.saveCachedUser(jsonEncode(user.toJson()));
+    } catch (_) {
+      // Cache write failures must never break login.
+    }
+  }
+
+  Future<AuthUser?> _readCachedUser() async {
+    try {
+      final raw = await _storage.cachedUser;
+      if (raw == null || raw.isEmpty) return null;
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map<String, dynamic>) return null;
+      return AuthUser.fromJson(decoded);
+    } catch (_) {
+      return null;
     }
   }
 

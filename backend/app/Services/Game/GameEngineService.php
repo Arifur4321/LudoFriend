@@ -12,6 +12,7 @@ use App\Models\MatchState;
 use App\Models\Matchup;
 use App\Models\PlayerProfile;
 use App\Models\PlayerStat;
+use App\Models\RecentPlayer;
 use App\Models\WalletTransaction;
 use App\Services\Economy\WalletService;
 use Illuminate\Support\Facades\DB;
@@ -333,14 +334,46 @@ class GameEngineService
      *
      * @throws RuntimeException on wrong turn / wrong phase / illegal move / replay.
      */
-    public function move(Matchup $match, string $color, int $tokenIndex, ?int $clientSeq = null): array
-    {
+    public function move(
+        Matchup $match,
+        string $color,
+        int $tokenIndex,
+        ?int $clientSeq = null,
+        ?string $actionId = null,
+    ): array {
         $color = strtolower($color);
         $broadcasts = [];
 
-        $result = DB::transaction(function () use ($match, $color, $tokenIndex, $clientSeq, &$broadcasts) {
+        $result = DB::transaction(function () use ($match, $color, $tokenIndex, $clientSeq, $actionId, &$broadcasts) {
             $row = MatchState::where('match_id', $match->id)->lockForUpdate()->first();
             $state = $row->state;
+
+            // Idempotency: a transport retry of the SAME physical tap must not
+            // become a second move (and must not 422). Replay the stored
+            // receipt while it still describes the current authoritative state
+            // (same seq); after any later action, normal validation applies.
+            $lastMove = $state['last_move'] ?? null;
+            if ($actionId !== null
+                && is_array($lastMove)
+                && isset($lastMove['action_hash'])
+                && hash_equals((string) $lastMove['action_hash'], hash('sha256', $actionId))
+                && ($lastMove['color'] ?? null) === $color
+                && (int) ($lastMove['token'] ?? -1) === $tokenIndex
+                && (int) ($lastMove['state_seq'] ?? -1) === (int) $state['seq']) {
+                return [
+                    'from' => (int) $lastMove['from'],
+                    'to' => (int) $lastMove['to'],
+                    'path' => $lastMove['path'] ?? [],
+                    'move_seq' => (int) $lastMove['move_seq'],
+                    'captured' => $lastMove['captured'] ?? [],
+                    'finished' => (bool) ($lastMove['finished'] ?? false),
+                    'extra_turn' => (bool) ($lastMove['extra_turn'] ?? false),
+                    'winner' => $state['winner'] ?? null,
+                    'turn_passed' => (bool) ($lastMove['turn_passed'] ?? false),
+                    'replayed' => true,
+                    'state' => $state,
+                ];
+            }
 
             $this->assertTurn($state, $color);
             $this->assertPhase($state, 'awaiting_move');
@@ -447,6 +480,14 @@ class GameEngineService
                 $turnPassed = true;
             }
 
+            // Stamp the idempotency receipt onto the snapshot so an identical
+            // transport retry can be answered without moving again. state_seq
+            // is the FINAL seq (after capture/turn events), matching what the
+            // retry will read back under the row lock.
+            $state['last_move']['action_hash'] = $actionId === null ? null : hash('sha256', $actionId);
+            $state['last_move']['state_seq'] = (int) $state['seq'];
+            $state['last_move']['turn_passed'] = $turnPassed;
+
             $this->persist($row, $state);
 
             return [
@@ -459,6 +500,7 @@ class GameEngineService
                 'extra_turn' => $extraTurn,
                 'winner' => $winner,
                 'turn_passed' => $turnPassed,
+                'replayed' => false,
                 'state' => $state,
             ];
         });
@@ -555,8 +597,47 @@ class GameEngineService
         }
 
         $this->recordResults($match, $winningColors);
+        $this->recordRecentPlayers($match);
 
         $broadcasts[] = new GameEnded($match->id, $winnerColor, $winnerPlayer?->user_id);
+    }
+
+    /**
+     * Record every pair of human participants (Facebook, Google, email, or
+     * guest — identical treatment) as each other's "recent players" so they
+     * can find and invite each other again after the match. Runs inside the
+     * finalize transaction; upserts keep it idempotent per match pair.
+     */
+    private function recordRecentPlayers(Matchup $match): void
+    {
+        $humans = $match->players()
+            ->whereNotNull('user_id')
+            ->where('is_bot', false)
+            ->pluck('user_id')
+            ->unique()
+            ->values();
+
+        if ($humans->count() < 2) {
+            return; // solo vs bots — nobody to remember.
+        }
+
+        $now = now();
+        foreach ($humans as $a) {
+            foreach ($humans as $b) {
+                if ($a === $b) {
+                    continue;
+                }
+
+                $row = RecentPlayer::firstOrNew([
+                    'user_id' => $a,
+                    'other_user_id' => $b,
+                ]);
+                $row->games = $row->exists ? $row->games + 1 : 1;
+                $row->last_match_id = $match->id;
+                $row->last_played_at = $now;
+                $row->save();
+            }
+        }
     }
 
     /**

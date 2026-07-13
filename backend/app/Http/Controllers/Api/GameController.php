@@ -76,6 +76,7 @@ class GameController extends Controller
                 $color,
                 (int) $request->integer('token'),
                 $request->filled('seq') ? (int) $request->integer('seq') : null,
+                actionId: $request->string('action_id')->toString() ?: null,
             );
         } catch (RuntimeException $e) {
             return response()->json(['message' => $e->getMessage()], 422);
@@ -94,6 +95,7 @@ class GameController extends Controller
                 'extra_turn' => $result['extra_turn'],
                 'winner' => $result['winner'],
                 'turn_passed' => $result['turn_passed'],
+                'replayed' => $result['replayed'] ?? false,
                 'state' => $result['state'],
             ],
         ]);

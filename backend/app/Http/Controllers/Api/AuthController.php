@@ -117,10 +117,22 @@ class AuthController extends Controller
 
     /**
      * Facebook login: verify the token, fetch the profile, link/create a user.
+     *
+     * Graph API failures (expired/invalid token, wrong app, network timeout)
+     * surface as a clean 422 with a human-readable message — never a 500 —
+     * so the app can show "session expired, try again" instead of a generic
+     * error. The Facebook App Secret only ever lives in server config; it is
+     * never logged or echoed back.
      */
     public function facebook(FacebookLoginRequest $request): JsonResponse
     {
-        $profile = $this->facebook->verifyAndFetchProfile($request->string('access_token'));
+        try {
+            $profile = $this->facebook->verifyAndFetchProfile($request->string('access_token'));
+        } catch (\Throwable $e) {
+            throw ValidationException::withMessages([
+                'access_token' => ['Facebook sign-in could not be verified. Please try again.'],
+            ]);
+        }
 
         if (empty($profile['id'])) {
             throw ValidationException::withMessages([
@@ -150,13 +162,31 @@ class AuthController extends Controller
                         'is_guest' => false,
                     ]);
 
-                SocialAccount::create([
-                    'user_id' => $user->id,
-                    'provider' => 'facebook',
-                    'provider_user_id' => $profile['id'],
-                    'avatar_url' => $profile['avatar'],
-                    'access_token' => $request->string('access_token'),
-                ]);
+                // Two simultaneous first-logins for the same Facebook account
+                // can race past the SELECT above. unique(provider,
+                // provider_user_id) makes the second INSERT fail; recover by
+                // re-reading the winner's row so exactly ONE user exists per
+                // Facebook identity and both requests succeed.
+                try {
+                    SocialAccount::create([
+                        'user_id' => $user->id,
+                        'provider' => 'facebook',
+                        'provider_user_id' => $profile['id'],
+                        'avatar_url' => $profile['avatar'],
+                        'access_token' => $request->string('access_token'),
+                    ]);
+                } catch (\Illuminate\Database\QueryException $e) {
+                    $existing = SocialAccount::where('provider', 'facebook')
+                        ->where('provider_user_id', $profile['id'])
+                        ->first();
+                    if (! $existing) {
+                        throw $e;
+                    }
+                    if ($user->wasRecentlyCreated && $existing->user_id !== $user->id) {
+                        $user->delete(); // discard the just-created duplicate shell
+                    }
+                    $user = $existing->user;
+                }
             }
 
             // Refresh the account photo so returning users pick up the current
@@ -183,7 +213,13 @@ class AuthController extends Controller
      */
     public function google(GoogleLoginRequest $request): JsonResponse
     {
-        $profile = $this->google->verifyIdToken($request->string('id_token'));
+        try {
+            $profile = $this->google->verifyIdToken($request->string('id_token'));
+        } catch (\Throwable $e) {
+            throw ValidationException::withMessages([
+                'id_token' => ['Google sign-in could not be verified. Please try again.'],
+            ]);
+        }
 
         if (empty($profile['id'])) {
             throw ValidationException::withMessages([
