@@ -71,6 +71,7 @@ class GameController extends StateNotifier<GameSession> {
   bool _busy = false;
   bool _refreshing = false;
   bool _refreshQueued = false;
+  bool _refreshQueuedForce = false;
   final MatchStateGate _gate = MatchStateGate();
   StreamSubscription<RealtimeEvent>? _rtSub;
   StreamSubscription<String>? _wsConnSub;
@@ -311,6 +312,30 @@ class GameController extends StateNotifier<GameSession> {
     );
   }
 
+  /// Remember that a refresh was requested while one couldn't run right now.
+  /// [force] is sticky: if ANY queued request needed a forced re-apply (error
+  /// recovery), the drained refresh keeps it — dropping it used to leave the
+  /// board without its token highlights after a failed roll/move, making a
+  /// perfectly legal token (dice 1 included) un-tappable.
+  void _queueRefresh({bool force = false}) {
+    _refreshQueued = true;
+    _refreshQueuedForce = _refreshQueuedForce || force;
+  }
+
+  /// Run the coalesced follow-up refresh as soon as nothing local owns the
+  /// board anymore. Called when a refresh finishes AND when a roll/move
+  /// resolves, so a Reverb event that landed mid-action is applied immediately
+  /// instead of waiting for the next 2s recovery poll (the wait was the
+  /// "dice/token needs several taps" stale window).
+  void _drainQueuedRefresh() {
+    if (!_refreshQueued || !mounted) return;
+    if (_busy || state.isMoving || state.isRolling) return; // re-drained later
+    _refreshQueued = false;
+    final force = _refreshQueuedForce;
+    _refreshQueuedForce = false;
+    unawaited(_refreshState(force: force));
+  }
+
   /// Fetch and apply the authoritative snapshot.
   ///
   /// [force] re-applies a snapshot even when its `seq` equals the one already
@@ -321,13 +346,18 @@ class GameController extends StateNotifier<GameSession> {
     // A local action owns the state while it runs: never let a recovery refresh
     // interrupt a roll (isRolling) or a move animation (isMoving), or race a
     // roll/move HTTP call (_busy). Coalesce bursts: if a refresh is already in
-    // flight, remember to run one more afterwards so we always converge on the
-    // newest snapshot after a flurry of Reverb events.
-    if (!mounted || (!force && (_busy || state.isMoving || state.isRolling))) {
+    // flight or an action owns the board, remember to run one afterwards so we
+    // always converge on the newest snapshot after a flurry of Reverb events.
+    if (!mounted) return;
+    if (!force && (_busy || state.isMoving || state.isRolling)) {
+      // Queue instead of dropping: this trigger (often a Reverb event for the
+      // very state change the player is waiting on) is re-run the moment the
+      // action/animation ends.
+      _queueRefresh();
       return;
     }
     if (_refreshing) {
-      _refreshQueued = true;
+      _queueRefresh(force: force);
       return;
     }
     _refreshing = true;
@@ -340,9 +370,9 @@ class GameController extends StateNotifier<GameSession> {
       // action owns the screen now — processing this (possibly pre-action)
       // snapshot would cancel its rolling/moving animation, so step aside and
       // let the action's own response (which always carries a newer seq) win.
-      // The queued follow-up re-converges afterwards via the recovery timer.
+      // The queued follow-up re-converges the moment the action resolves.
       if (!force && (_busy || state.isMoving || state.isRolling)) {
-        _refreshQueued = true;
+        _queueRefresh();
         return;
       }
       final payload = _payload(res.data);
@@ -352,10 +382,7 @@ class GameController extends StateNotifier<GameSession> {
       // neither replay an old move animation nor revert a newer turn/dice state.
       if (!_gate.shouldApply(_seqOf(serverState), allowEqual: force)) return;
 
-      final turn = serverState['turn'] as String?;
-      final movable = turn != null && turn == config.myColor
-          ? ServerStateAdapter.movableIds(turn, payload['legal_moves'])
-          : const <String>[];
+      final movable = _movableFor(serverState, payload['legal_moves']);
       final lastMove = _moveFromState(serverState);
       if (_lastSyncedGame == null) {
         if (lastMove?.sequence != null) {
@@ -371,20 +398,42 @@ class GameController extends StateNotifier<GameSession> {
       } else if (lastMove?.sequence != null) {
         _lastAnimatedMoveSequence = lastMove!.sequence!;
       }
-      _applyServerState(serverState, movable: movable, force: force);
+      final applied =
+          _applyServerState(serverState, movable: movable, force: force);
+      if (!applied && (state.isMoving || state.isRolling)) {
+        // The gate rejected this snapshot after its move animation already
+        // started (something newer applied meanwhile). Drop the transient
+        // overlay so the board can never stay wedged in isMoving/isRolling —
+        // that wedge froze ALL dice/token input until the app restarted.
+        state = state.copyWith(
+          isMoving: false,
+          isRolling: false,
+          lastMove: null,
+        );
+      }
     } catch (e, st) {
       AppLogger.e('online state refresh failed', e, st);
     } finally {
       _refreshing = false;
       // Run the coalesced follow-up only when no local action has since taken
-      // over, so recovery never fights an in-progress roll/move.
-      if (_refreshQueued) {
-        _refreshQueued = false;
-        if (mounted && !_busy && !state.isMoving && !state.isRolling) {
-          unawaited(_refreshState());
-        }
-      }
+      // over; otherwise it is drained again when that action resolves.
+      _drainQueuedRefresh();
     }
+  }
+
+  /// Movable token ids for [serverState], preferring the payload's
+  /// authoritative `legal_moves` and falling back to a local recompute from
+  /// the snapshot itself (mirrored rules) when the payload list is absent or
+  /// unparseable while the phase says a move is pending. Guarantees a legal
+  /// roll — 1 included — always yields tappable tokens on the owner's device.
+  List<String> _movableFor(
+      Map<String, dynamic> serverState, dynamic legalMoves) {
+    final turn = serverState['turn'] as String?;
+    if (turn == null || turn != config.myColor) return const [];
+    final fromPayload = ServerStateAdapter.movableIds(turn, legalMoves);
+    if (fromPayload.isNotEmpty) return fromPayload;
+    return ServerStateAdapter.movableFromState(serverState,
+        rules: config.rules);
   }
 
   Future<void> _sendRoll() async {
@@ -415,8 +464,9 @@ class GameController extends StateNotifier<GameSession> {
       );
       final data = _payload(res.data);
       final serverState = _asMap(data['state']);
-      final movable = ServerStateAdapter.movableIds(
-          config.myColor ?? '', data['legal_moves']);
+      final movable = serverState == null
+          ? const <String>[]
+          : _movableFor(serverState, data['legal_moves']);
       final dice = (data['dice'] as num?)?.toInt();
       final forfeited = data['forfeited'] == true;
       final turnPassed = data['turn_passed'] == true;
@@ -426,7 +476,7 @@ class GameController extends StateNotifier<GameSession> {
       await minimumAnimation;
       if (!mounted) return;
       if (serverState != null) {
-        _applyServerState(
+        final applied = _applyServerState(
           serverState,
           movable: movable,
           banner: _onlineRollBanner(
@@ -437,6 +487,20 @@ class GameController extends StateNotifier<GameSession> {
           ),
           displayedDice: turnPassed ? null : dice,
         );
+        if (!applied) {
+          // Should not happen (refreshes are fenced out while _busy), but if
+          // the gate ever rejects the roll's own snapshot, never leave the
+          // die spinning — resync to the authoritative truth instead.
+          state = state.copyWith(isRolling: false);
+          needsResync = true;
+        } else if (state.game.status == GameStatus.awaitingMove &&
+            state.game.currentPlayer.isHuman &&
+            state.game.pendingMovableTokenIds.isEmpty) {
+          // Inconsistent response: the server is awaiting OUR move but no
+          // token could be derived as movable. Re-fetch rather than leaving
+          // the player stranded with a wrong "roll again" prompt.
+          needsResync = true;
+        }
       } else {
         // Malformed/empty body: stop the dice animation but do NOT rebuild the
         // session from a pre-roll snapshot — that could paint state older than
@@ -473,6 +537,9 @@ class GameController extends StateNotifier<GameSession> {
             : 'Connection restored — game state synchronized.',
       );
     }
+    // A Reverb event may have arrived while this roll owned the board;
+    // converge on it now instead of waiting for the next recovery poll.
+    _drainQueuedRefresh();
   }
 
   String _onlineRollBanner({
@@ -485,11 +552,25 @@ class GameController extends StateNotifier<GameSession> {
     if (dice == null) return 'Dice rolled.';
     if (hasLegalMoves) return 'Rolled $dice — tap a glowing pawn.';
     if (turnPassed) return 'Rolled $dice — no legal move. Turn passed.';
-    return 'Rolled $dice — no legal move. Roll again!';
+    // Only a six ever grants a re-roll (existing rules). Any other value
+    // with no legal move always passes the turn server-side, so claiming
+    // "roll again" for it was wrong — with dice 1 it told the player to
+    // roll while the server was still awaiting their move.
+    if (dice == 6) return 'Rolled 6 — no legal move. Roll again!';
+    return 'Rolled $dice — synchronizing…';
   }
 
   Future<void> _sendMove(String tokenId) async {
-    if (_busy || !state.game.pendingMovableTokenIds.contains(tokenId)) return;
+    // Same atomic re-entrancy lock as the dice: the first valid tap acquires
+    // it; a rapid second tap on the same (or another) pawn, a queued gesture,
+    // or the turn-timer auto-act firing simultaneously is ignored until this
+    // move fully resolves — exactly one move request leaves the device per
+    // tap. It also fences a token tap out while a roll is still in flight.
+    if (!_gate.beginSubmission()) return;
+    if (_busy || !state.game.pendingMovableTokenIds.contains(tokenId)) {
+      _gate.endSubmission();
+      return;
+    }
     final originalGame = state.game;
     final predicted = _engine.applyMove(originalGame, tokenId).result;
     final parts = tokenId.split('_');
@@ -537,7 +618,20 @@ class GameController extends StateNotifier<GameSession> {
       if (serverState != null) {
         // Sounds/celebrations (capture, home, win) come from the state diff in
         // _applyServerState, so they fire identically for every player.
-        _applyServerState(serverState);
+        // The response's own movable set matters when the move grants an
+        // extra turn only in the awaiting_roll sense; when the server stays in
+        // awaiting_move for us (not a case today, but shape-proof) the
+        // fallback recompute keeps the pawns tappable.
+        final applied = _applyServerState(
+          serverState,
+          movable: _movableFor(serverState, data['legal_moves']),
+        );
+        if (!applied) {
+          // Snapshot rejected as stale (should not happen — refreshes are
+          // fenced while _busy): never leave the walking overlay on screen.
+          state = state.copyWith(isMoving: false, lastMove: null);
+          needsResync = true;
+        }
       } else {
         // Confirmed-but-unparseable response: never repaint from the local
         // pre-move snapshot (that is exactly the walk-forward-then-snap-back
@@ -570,11 +664,15 @@ class GameController extends StateNotifier<GameSession> {
       needsResync = true;
     } finally {
       _busy = false;
+      _gate.endSubmission();
     }
 
     if (needsResync && mounted) {
       await _refreshState(force: true);
     }
+    // Converge on any Reverb event that arrived while this move owned the
+    // board, instead of waiting for the next recovery poll.
+    _drainQueuedRefresh();
   }
 
   MoveResult? _moveFromState(Map<String, dynamic> serverState) {
@@ -610,14 +708,17 @@ class GameController extends StateNotifier<GameSession> {
     await Future<void>.delayed(_moveAnimationDuration(move));
   }
 
-  void _applyServerState(
+  /// Returns true when the snapshot passed the ordering gate and was applied;
+  /// false when it was rejected as stale/duplicate (callers then clean up any
+  /// transient animation flags they own — the game state itself is untouched).
+  bool _applyServerState(
     Map<String, dynamic> serverState, {
     List<String> movable = const [],
     String? banner,
     int? displayedDice,
     bool force = false,
   }) {
-    if (!mounted) return;
+    if (!mounted) return false;
     // Monotonic authoritative ordering: never let an older/duplicate snapshot
     // replace a newer one already on screen. This is what stops a late poll or a
     // re-delivered Reverb event from reverting a fresh roll and re-enabling the
@@ -626,7 +727,7 @@ class GameController extends StateNotifier<GameSession> {
     // seq (idempotent) so recovery can rebuild highlights/banners — an OLDER
     // snapshot is still always rejected.
     final incomingSeq = _seqOf(serverState);
-    if (!_gate.shouldApply(incomingSeq, allowEqual: force)) return;
+    if (!_gate.shouldApply(incomingSeq, allowEqual: force)) return false;
     _gate.markApplied(incomingSeq);
     final game = ServerStateAdapter.toGameState(
       serverState: serverState,
@@ -643,6 +744,7 @@ class GameController extends StateNotifier<GameSession> {
     );
     // Never on the first snapshot (joining/reconnecting mustn't replay noises).
     if (prev != null) _announceDiff(prev, game);
+    return true;
   }
 
   /// Compare consecutive authoritative snapshots and fire the matching sounds

@@ -74,20 +74,87 @@ class ServerStateAdapter {
 
   /// Build token ids (`'red_2'`) from the server's `legal_moves` for [color].
   /// Accepts either a list of token indexes (`[0,2]`) or a list of maps that
-  /// carry a `token`/`index` field — whichever the API returns.
+  /// carry a `token`/`index` field — whichever the API returns. A map-shaped
+  /// list (PHP serializes a non-sequential array as an object) and stringly
+  /// typed indexes are tolerated too, so a transport quirk can never silently
+  /// strip a legal move.
   static List<String> movableIds(String color, dynamic legalMoves) {
-    if (legalMoves is! List) return const [];
+    final entries = legalMoves is List
+        ? legalMoves
+        : (legalMoves is Map ? legalMoves.values.toList() : const []);
     final ids = <String>[];
-    for (final m in legalMoves) {
+    for (final m in entries) {
       int? idx;
       if (m is num) {
         idx = m.toInt();
+      } else if (m is String) {
+        idx = int.tryParse(m);
       } else if (m is Map) {
         final v = m['token'] ?? m['index'] ?? m['token_index'];
-        if (v is num) idx = v.toInt();
+        if (v is num) {
+          idx = v.toInt();
+        } else if (v is String) {
+          idx = int.tryParse(v);
+        }
       }
       if (idx != null) ids.add('${color}_$idx');
     }
     return ids;
+  }
+
+  /// Recompute the movable token ids for the pending roll directly from the
+  /// authoritative snapshot (`turn` + `dice` + `tokens`), mirroring the
+  /// backend's `LudoRules::legalMoves` exactly (leave-base-on-six, no
+  /// overshooting home, no landing on your own token; home may be shared).
+  ///
+  /// This is the safety net for a payload whose `legal_moves` was missing or
+  /// unparseable: the phase says a move is pending, so the player must always
+  /// be offered their legal tokens — a dice value of 1 included. The server
+  /// still validates whichever token is actually picked.
+  static List<String> movableFromState(
+    Map<String, dynamic> serverState, {
+    RuleConfig rules = const RuleConfig(),
+  }) {
+    if (serverState['phase'] != 'awaiting_move') return const [];
+    final turn = serverState['turn'] as String?;
+    final dice = (serverState['dice'] as num?)?.toInt();
+    if (turn == null || dice == null) return const [];
+    final tokensMap =
+        (serverState['tokens'] as Map?)?.cast<String, dynamic>() ?? const {};
+    final raw = tokensMap[turn];
+    if (raw is! List) return const [];
+
+    final positions = <int>[
+      for (final p in raw)
+        if (p is num) p.toInt()
+    ];
+    final ids = <String>[];
+    for (var i = 0; i < positions.length; i++) {
+      final rel = positions[i];
+      if (!_canMoveRel(rel, dice, rules)) continue;
+      final to = rel == RuleConfig.inBase ? 0 : rel + dice;
+      // Own-token occupancy: the server disallows stacking on yourself
+      // anywhere except the shared home slot (rel 56).
+      if (to != RuleConfig.homeIndex) {
+        var occupied = false;
+        for (var j = 0; j < positions.length; j++) {
+          if (j != i && positions[j] == to) {
+            occupied = true;
+            break;
+          }
+        }
+        if (occupied) continue;
+      }
+      ids.add('${turn}_$i');
+    }
+    return ids;
+  }
+
+  static bool _canMoveRel(int rel, int dice, RuleConfig rules) {
+    if (rel >= RuleConfig.homeIndex) return false; // finished — immovable.
+    if (rel == RuleConfig.inBase) {
+      return rules.leaveBaseOnlyOnSix ? dice == 6 : true;
+    }
+    return rel + dice <= RuleConfig.homeIndex; // must land exactly on home.
   }
 }

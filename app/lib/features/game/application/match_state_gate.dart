@@ -25,22 +25,24 @@ class MatchStateGate {
   /// the first sync).
   int get appliedSeq => _appliedSeq;
 
-  /// Whether a roll request is currently in flight.
+  /// Whether an action (roll or move) request is currently in flight.
   bool get isSubmitting => _submitting;
 
-  /// Attempt to begin a roll submission. Returns `true` exactly once per
-  /// in-flight roll: the first valid tap acquires the lock; any further taps
-  /// while the roll is pending get `false` and must be ignored. Always pair a
-  /// `true` result with [endSubmission] in a `finally`.
+  /// Attempt to begin an action submission (dice roll or token move). Returns
+  /// `true` exactly once per in-flight action: the first valid tap acquires
+  /// the lock; any further taps while the action is pending get `false` and
+  /// must be ignored — this is what makes one physical tap produce exactly
+  /// one server request. Always pair a `true` result with [endSubmission] in
+  /// a `finally`.
   bool beginSubmission() {
     if (_submitting) return false;
     _submitting = true;
     return true;
   }
 
-  /// Release the roll lock once the request has fully resolved (success, error,
-  /// or timeout) so the player can roll again when it is legitimately their
-  /// turn.
+  /// Release the action lock once the request has fully resolved (success,
+  /// error, or timeout) so the player can act again when it is legitimately
+  /// their turn.
   void endSubmission() => _submitting = false;
 
   /// Whether an incoming snapshot carrying [incomingSeq] should be applied.

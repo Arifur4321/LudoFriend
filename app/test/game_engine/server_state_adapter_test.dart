@@ -108,4 +108,109 @@ void main() {
     );
     expect(ServerStateAdapter.movableIds('red', null), isEmpty);
   });
+
+  test('movableIds tolerates map-shaped lists and stringly typed indexes', () {
+    // PHP serializes a non-sequential array as a JSON object.
+    expect(
+      ServerStateAdapter.movableIds('red', {
+        '0': {'token': 0},
+        '2': {'token': 2},
+      }),
+      ['red_0', 'red_2'],
+    );
+    expect(
+      ServerStateAdapter.movableIds('red', [
+        {'token': '1'},
+      ]),
+      ['red_1'],
+    );
+    expect(ServerStateAdapter.movableIds('red', ['3']), ['red_3']);
+    expect(ServerStateAdapter.movableIds('red', 'garbage'), isEmpty);
+  });
+
+  group('movableFromState — legal-move fallback from the snapshot', () {
+    test('a pending dice of 1 yields the ring token (the reported bug)', () {
+      final ids = ServerStateAdapter.movableFromState({
+        'tokens': {
+          'red': [10, -1, -1, -1],
+          'yellow': [-1, -1, -1, -1],
+        },
+        'turn': 'red',
+        'phase': 'awaiting_move',
+        'dice': 1,
+        'seq': 3,
+      });
+      expect(ids, ['red_0'],
+          reason: 'a legal 1-step move must always be offered');
+    });
+
+    test('dice 1 with everything in base yields nothing (six required)', () {
+      final ids = ServerStateAdapter.movableFromState({
+        'tokens': {
+          'red': [-1, -1, -1, -1],
+          'yellow': [-1, -1, -1, -1],
+        },
+        'turn': 'red',
+        'phase': 'awaiting_move',
+        'dice': 1,
+      });
+      expect(ids, isEmpty);
+    });
+
+    test('mirrors server occupancy + exact-home rules', () {
+      final ids = ServerStateAdapter.movableFromState({
+        'tokens': {
+          'red': [10, 11, 55, -1],
+          'yellow': [-1, -1, -1, -1],
+        },
+        'turn': 'red',
+        'phase': 'awaiting_move',
+        'dice': 2,
+      });
+      // 10+2=12 free, 11+2=13 free, 55+2=57 overshoots home, base needs a six.
+      expect(ids, ['red_0', 'red_1']);
+    });
+
+    test('landing on your own token is not offered', () {
+      final ids = ServerStateAdapter.movableFromState({
+        'tokens': {
+          'red': [10, 12, -1, -1],
+          'yellow': [-1, -1, -1, -1],
+        },
+        'turn': 'red',
+        'phase': 'awaiting_move',
+        'dice': 2,
+      });
+      // token0 10+2=12 occupied by own token1; token1 12+2=14 free.
+      expect(ids, ['red_1']);
+    });
+
+    test('shared home slot may hold several own tokens', () {
+      final ids = ServerStateAdapter.movableFromState({
+        'tokens': {
+          'red': [55, 56, -1, -1],
+          'yellow': [-1, -1, -1, -1],
+        },
+        'turn': 'red',
+        'phase': 'awaiting_move',
+        'dice': 1,
+      });
+      expect(ids, ['red_0'], reason: '55+1 lands exactly on home');
+    });
+
+    test('inactive phases and missing fields yield nothing', () {
+      expect(
+        ServerStateAdapter.movableFromState({
+          'tokens': {
+            'red': [10, -1, -1, -1],
+          },
+          'turn': 'red',
+          'phase': 'awaiting_roll',
+          'dice': null,
+        }),
+        isEmpty,
+      );
+      expect(ServerStateAdapter.movableFromState(const {}), isEmpty);
+    });
+  });
 }
