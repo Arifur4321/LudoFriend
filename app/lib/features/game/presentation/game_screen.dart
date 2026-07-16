@@ -392,6 +392,12 @@ class _StatusStrip extends ConsumerWidget {
   }
 
   void _autoAct(GameController controller, WidgetRef ref) {
+    // Never let the turn timer fire an action on top of one the player already
+    // started: a manual roll/move that is in flight (or still animating) must
+    // win. The controller's submission lock would also reject a duplicate, but
+    // bailing here additionally stops the timer from auto-picking a *different*
+    // token than the one the player just tapped.
+    if (controller.isActionInFlight) return;
     final game = ref.read(gameControllerProvider).game;
     if (game.isFinished) return;
     if (game.status == GameStatus.waitingForRoll) {

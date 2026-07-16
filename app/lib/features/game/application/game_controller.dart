@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/constants/app_constants.dart';
@@ -80,6 +81,13 @@ class GameController extends StateNotifier<GameSession> {
   int _rollActionSequence = 0;
   int _moveActionSequence = 0;
 
+  /// When the last authoritative realtime (Reverb) event for THIS match was
+  /// received. Drives adaptive recovery polling: while the socket is healthy and
+  /// recently active we rely on events and skip the redundant poll; when it goes
+  /// quiet or the socket drops we fall back to polling so a missed broadcast can
+  /// never strand a player.
+  DateTime? _lastRealtimeEventAt;
+
   /// Last authoritative snapshot applied in an online match, used to detect
   /// home-arrivals / captures / the win from state diffs so BOTH players get
   /// the same sounds + celebrations regardless of who moved.
@@ -88,6 +96,23 @@ class GameController extends StateNotifier<GameSession> {
   bool get _online => config.isOnline && config.matchId != null;
 
   AudioService get _audio => _ref.read(audioServiceProvider);
+
+  /// True while a roll/move request is in flight or a local action is still
+  /// animating. The turn-timer auto-act consults this so a timeout can never
+  /// fire a second action on top of one the player already started (a manual
+  /// move must always win the race against its own turn timer).
+  bool get isActionInFlight => _busy || _gate.isSubmitting || state.isBusy;
+
+  /// Whether the realtime channel is trustworthy enough to skip a recovery
+  /// poll: the socket is connected AND an authoritative match event arrived
+  /// within the last few seconds. When false (socket down or events quiet) the
+  /// poll runs, so a missed broadcast can never strand a player.
+  bool get _realtimeHealthy {
+    final last = _lastRealtimeEventAt;
+    if (last == null) return false;
+    if (!_ref.read(webSocketServiceProvider).isConnected) return false;
+    return DateTime.now().difference(last) < const Duration(seconds: 6);
+  }
 
   /// For a local (offline) game, stamp the signed-in user's name + profile photo
   /// (or guest flag) onto the first human seat, so the board shows YOU rather
@@ -289,9 +314,20 @@ class GameController extends StateNotifier<GameSession> {
     if (mounted) {
       // Exactly ONE recovery timer per match: never stack a second one.
       _statePoll?.cancel();
+      // Adaptive recovery polling: the timer ticks on a fixed short cadence, but
+      // each tick only hits the network when it needs to. While the Reverb
+      // socket is connected and has delivered an event recently, the
+      // event-driven refresh already keeps us current, so the redundant poll is
+      // skipped. When the socket is down or events have gone quiet (a missed
+      // broadcast, a backgrounded peer, a network switch), polling resumes so a
+      // player is never stranded — the safety net stays, without hammering
+      // GET /state while realtime is healthy.
       _statePoll = Timer.periodic(
         const Duration(seconds: 2),
-        (_) => _refreshState(),
+        (_) {
+          if (_realtimeHealthy) return;
+          _refreshState();
+        },
       );
     }
   }
@@ -456,8 +492,11 @@ class GameController extends StateNotifier<GameSession> {
     var needsResync = false;
     _busy = true;
     state = state.copyWith(isRolling: true, banner: null);
-    _audio.play(Sfx.dice);
     try {
+      // Inside the try so a throwing audio backend can never leave _busy or the
+      // submission lock stuck — that would silently swallow every later dice tap
+      // for the rest of the match. endSubmission always runs in the finally.
+      _audio.play(Sfx.dice);
       final res = await _ref.read(dioProvider).post(
         ApiEndpoints.rollDice(config.matchId!),
         data: {'color': config.myColor, 'action_id': actionId},
@@ -511,16 +550,21 @@ class GameController extends StateNotifier<GameSession> {
         needsResync = true;
       }
     } catch (e, st) {
-      AppLogger.e('online roll failed', e, st);
+      // The http status is logged explicitly so a hidden 401/422/429 (the exact
+      // "silent" failures called out in the bug report) is visible on-device.
+      AppLogger.e('online roll failed (http ${_httpStatus(e)})', e, st);
       await minimumAnimation;
       if (!mounted) return;
       // Whether this was a network drop (roll may or may not have committed)
       // or a 422 rejection (e.g. the turn-timer auto-roll won the race), the
       // server knows best: clear the transient flag and force a resync instead
-      // of guessing with a locally-cached snapshot.
+      // of guessing with a locally-cached snapshot. (A roll moves no token, so
+      // there is no position to preserve here — unlike a move.)
       state = state.copyWith(
         isRolling: false,
-        banner: 'Connection interrupted — checking the game state…',
+        banner: _httpStatus(e) == 429
+            ? 'Server is busy — retrying in a moment…'
+            : 'Connection interrupted — checking the game state…',
       );
       needsResync = true;
     } finally {
@@ -572,7 +616,21 @@ class GameController extends StateNotifier<GameSession> {
       return;
     }
     final originalGame = state.game;
-    final predicted = _engine.applyMove(originalGame, tokenId).result;
+    late final MoveApplication predictedApp;
+    try {
+      predictedApp = _engine.applyMove(originalGame, tokenId);
+    } catch (e, st) {
+      // An inconsistent snapshot (e.g. a movable token but no pending dice, so
+      // `lastDice!` throws) must never leave the submission lock stuck — that
+      // would swallow every later token tap for the rest of the match. Release
+      // the lock and resync to the authoritative truth instead.
+      AppLogger.e('online move preflight failed', e, st);
+      _gate.endSubmission();
+      if (mounted) unawaited(_refreshState(force: true));
+      return;
+    }
+    final predicted = predictedApp.result;
+    final predictedState = predictedApp.state;
     final parts = tokenId.split('_');
     final color = parts.isNotEmpty ? parts[0] : (config.myColor ?? '');
     final token = int.tryParse(parts.length > 1 ? parts[1] : '') ?? 0;
@@ -641,26 +699,37 @@ class GameController extends StateNotifier<GameSession> {
         needsResync = true;
       }
     } catch (e, st) {
-      AppLogger.e('online move failed', e, st);
+      // Log the http status explicitly so a hidden 401/422/429 is visible.
+      AppLogger.e('online move failed (http ${_httpStatus(e)})', e, st);
       await minimumAnimation;
       if (!mounted) return;
-      // Two very different situations end up here and BOTH must not repaint
-      // the old board:
-      //  - Network drop/timeout: the server may have committed the move. The
-      //    old "restore originalGame" behaviour made the token walk forward
-      //    and then jump back to its old cell until the next poll — the exact
-      //    reported bug. Keep the pre-move board (it was never mutated), drop
-      //    the overlay, and force-resync: if the move committed, the fresh
-      //    snapshot's last_move animates it forward properly (we intentionally
-      //    did NOT advance _lastAnimatedMoveSequence on this path).
-      //  - 422 rejection (stale phase after an auto-act race, illegal move):
-      //    the forced resync re-applies the server truth including the token
-      //    highlights, so the player can immediately act — no dead taps.
-      state = state.copyWith(
-        isMoving: false,
-        lastMove: null,
-        banner: 'Connection interrupted — checking the game state…',
-      );
+      if (_isTransportDrop(e)) {
+        // Transport drop / timeout: the request very likely reached the server
+        // and committed — only the reply was lost. Do NOT snap the token back
+        // to its old cell (the "walk forward then jump back" bug, and a breach
+        // of the "keep a stable visual state while resynchronizing" rule). Hold
+        // it at the predicted destination; the forced resync confirms it (or,
+        // if it never committed, corrects it once from authoritative truth). We
+        // intentionally did NOT advance _lastAnimatedMoveSequence, so a fresh
+        // last_move can still animate if needed.
+        state = GameSession(
+          game: predictedState,
+          diceFace: state.diceFace,
+          banner: 'Connection interrupted — checking the game state…',
+        );
+      } else {
+        // A real server rejection (422 stale phase / illegal move, 403, 429
+        // busy): the pre-move board is authoritative. Drop the overlay and let
+        // the forced resync rebuild the token highlights so the player can act
+        // again with no dead taps. (Behaviour unchanged from before.)
+        state = state.copyWith(
+          isMoving: false,
+          lastMove: null,
+          banner: _httpStatus(e) == 429
+              ? 'Server is busy — retrying in a moment…'
+              : 'Connection interrupted — checking the game state…',
+        );
+      }
       needsResync = true;
     } finally {
       _busy = false;
@@ -796,6 +865,9 @@ class GameController extends StateNotifier<GameSession> {
       case 'game.ended':
       case 'game.player_reconnected':
       case 'game.player_disconnected':
+        // A fresh authoritative event means the socket is alive; record it so
+        // adaptive polling can trust realtime for the next few seconds.
+        _lastRealtimeEventAt = DateTime.now();
         _refreshState();
         break;
       case 'chat.message':
@@ -856,5 +928,31 @@ class GameController extends StateNotifier<GameSession> {
   int? _seqOf(Map<String, dynamic> serverState) {
     final raw = serverState['seq'];
     return raw is num ? raw.toInt() : null;
+  }
+
+  /// The HTTP status of a failed request, or null for a transport-level error
+  /// (no response). Logged so a hidden 401/422/429 is visible on-device, and
+  /// used to decide how to recover.
+  int? _httpStatus(Object e) => e is DioException ? e.response?.statusCode : null;
+
+  /// True when a failure is a transport drop / timeout (the request may well
+  /// have reached the server and committed) rather than a definitive HTTP
+  /// rejection. Only on a transport drop do we preserve the optimistic token
+  /// position instead of reverting to the pre-move board.
+  bool _isTransportDrop(Object e) {
+    if (e is DioException) {
+      switch (e.type) {
+        case DioExceptionType.connectionError:
+        case DioExceptionType.connectionTimeout:
+        case DioExceptionType.receiveTimeout:
+        case DioExceptionType.sendTimeout:
+          return true;
+        default:
+          // Any other Dio error without a response is also transport-level; one
+          // that carries a response (4xx/5xx) is a real server rejection.
+          return e.response == null;
+      }
+    }
+    return false; // non-Dio throw → treat as a rejection (revert + resync).
   }
 }

@@ -826,7 +826,19 @@ class GameEngineService
     private function flushBroadcasts(array $events): void
     {
         foreach ($events as $event) {
-            broadcast($event);
+            try {
+                // The events are ShouldBroadcastNow, so they publish to Reverb
+                // synchronously here. A bare broadcast() would dispatch on the
+                // PendingBroadcast's __destruct — outside any try — so capture it
+                // and unset() to force the send INSIDE this try. A broadcast /
+                // Reverb hiccup is then logged and swallowed: it must never fail
+                // an action whose authoritative state is already committed to the
+                // database (peers still converge via the recovery poll).
+                $pending = broadcast($event);
+                unset($pending);
+            } catch (\Throwable $e) {
+                report($e);
+            }
         }
     }
 

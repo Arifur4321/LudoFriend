@@ -36,13 +36,30 @@ Future<bool> enterOnlineMatch(
 
   if (!context.mounted) return false;
 
-  final myId = ref.read(authControllerProvider).valueOrNull?.id;
+  // Resolve MY Laravel user id — the authoritative identity every login type
+  // (Facebook, Google, guest) shares. Await the auth future if it has not
+  // settled yet: a momentarily-unloaded session (more likely right after a
+  // Facebook round-trip) must never leave us without a seat colour, which would
+  // make our own dice and tokens silently unresponsive.
+  var myId = ref.read(authControllerProvider).valueOrNull?.id;
+  myId ??= (await ref.read(authControllerProvider.future))?.id;
+  if (!context.mounted) return false;
+
   String? myColor;
   for (final p in m.players) {
-    if (p.userId != null && '${p.userId}' == myId) {
+    // Match on the Laravel user id (never the Facebook/Google profile id): the
+    // int seat id is stringified so it compares cleanly with the String auth id.
+    if (p.userId != null && myId != null && '${p.userId}' == myId) {
       myColor = p.color;
       break;
     }
+  }
+  // A seated participant must always resolve to a colour. If identity is
+  // genuinely unavailable, surface a recoverable error instead of dropping the
+  // player onto a board whose dice and tokens would silently do nothing.
+  if (myColor == null) {
+    onError?.call('Could not confirm your seat — please reopen the match.');
+    return false;
   }
 
   ref.read(activeBoardThemeProvider.notifier).state =

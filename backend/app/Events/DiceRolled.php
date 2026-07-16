@@ -4,11 +4,17 @@ namespace App\Events;
 
 use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Broadcasting\PrivateChannel;
-use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
+use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
 
-class DiceRolled implements ShouldBroadcast
+// ShouldBroadcastNow (not ShouldBroadcast): in-game events are delivered
+// synchronously after the transaction commits, so a turn/dice/move reaches the
+// opponent's phone immediately instead of waiting behind other jobs on the
+// shared queue workers (the "board feels delayed / different between phones"
+// symptom). The send is fired from GameEngineService::flushBroadcasts AFTER
+// commit and is wrapped so a broadcast hiccup can never fail the committed play.
+class DiceRolled implements ShouldBroadcastNow
 {
     use Dispatchable, InteractsWithSockets, SerializesModels;
 
