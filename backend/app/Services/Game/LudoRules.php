@@ -127,9 +127,18 @@ class LudoRules
     /**
      * Compute every legal move for `$color` given a dice value and the full
      * token map. Occupancy rules applied:
-     *   - You may not land on a ring cell already occupied by your OWN token
-     *     (blocking yourself is disallowed; stacking is not modeled).
-     *   - Home-column cells are private so own-stacking there is also blocked.
+     *   - Own-token stacking is ALLOWED: a token may land on any cell already
+     *     occupied by one of its OWN tokens (shared ring, its start cell, or
+     *     the home column). Multiple own tokens may therefore share a square,
+     *     and a base token may still leave on a six even when the start cell
+     *     already holds one of its own tokens.
+     *   - Only OPPONENT tokens are ever affected by a landing (see captures);
+     *     own tokens on the destination are left untouched.
+     *
+     * Move legality is otherwise purely geometric (see isLegalTokenMove):
+     * leave base only on a six, never overshoot home (land exactly on 56),
+     * finished tokens are immovable. Every geometrically legal token is
+     * therefore returned here.
      *
      * @param  array<string,int[]>  $tokens  color => [rel,rel,rel,rel]
      * @return array<int,array{token:int,from:int,to:int,captures:int[]}>
@@ -150,12 +159,9 @@ class LudoRules
 
             $to = $this->destinationRel($rel, $dice);
 
-            // Disallow landing on a cell occupied by one of our own tokens
-            // (both ring and home column are checked by relative position).
-            if ($this->ownTokenOccupies($own, $tokenIndex, $to)) {
-                continue;
-            }
-
+            // Own-token stacking is allowed: landing on a cell occupied by one
+            // of our own tokens is legal, so every geometrically legal token is
+            // included. Only opponents are affected on arrival (see captures).
             $moves[] = [
                 'token'    => $tokenIndex,
                 'from'     => $rel,
@@ -210,9 +216,10 @@ class LudoRules
 
         $to = $this->destinationRel($from, $dice);
 
-        if ($this->ownTokenOccupies($tokens[$color], $tokenIndex, $to)) {
-            throw new \InvalidArgumentException('Destination occupied by own token.');
-        }
+        // Own-token stacking is allowed: there is no rejection when the
+        // destination is already held by one of our own tokens (shared ring,
+        // start cell, or home column). Only opponent tokens on the destination
+        // are captured (resolved below); own tokens simply share the square.
 
         // Resolve captures (opponent tokens sharing the destination ring cell,
         // unless the cell is safe, and never inside home columns).
@@ -347,32 +354,6 @@ class LudoRules
         }
 
         return $targets;
-    }
-
-    /**
-     * Does the moving color already have a (different) token sitting on the
-     * destination relative position? Prevents self-stacking on ring/home cells.
-     *
-     * @param  int[]  $ownTokens
-     */
-    private function ownTokenOccupies(array $ownTokens, int $movingIndex, int $to): bool
-    {
-        // Reaching home (56) may be shared by multiple own tokens — many tokens
-        // can "finish" on the same conceptual home slot.
-        if ($to === $this->relHome) {
-            return false;
-        }
-
-        foreach ($ownTokens as $i => $rel) {
-            if ($i === $movingIndex) {
-                continue;
-            }
-            if ($rel === $to) {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     /**

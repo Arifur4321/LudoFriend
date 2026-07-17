@@ -157,7 +157,7 @@ void main() {
       expect(ids, isEmpty);
     });
 
-    test('mirrors server occupancy + exact-home rules', () {
+    test('mirrors exact-home / no-overshoot rules', () {
       final ids = ServerStateAdapter.movableFromState({
         'tokens': {
           'red': [10, 11, 55, -1],
@@ -171,7 +171,7 @@ void main() {
       expect(ids, ['red_0', 'red_1']);
     });
 
-    test('landing on your own token is not offered', () {
+    test('landing on your own token IS offered (own-stacking allowed)', () {
       final ids = ServerStateAdapter.movableFromState({
         'tokens': {
           'red': [10, 12, -1, -1],
@@ -181,8 +181,38 @@ void main() {
         'phase': 'awaiting_move',
         'dice': 2,
       });
-      // token0 10+2=12 occupied by own token1; token1 12+2=14 free.
-      expect(ids, ['red_1']);
+      // token0 10+2=12 lands on own token1 — now legal (stacking); token1 ok.
+      expect(ids, ['red_0', 'red_1']);
+    });
+
+    test('a base token is releasable on a six when the start cell is occupied',
+        () {
+      final ids = ServerStateAdapter.movableFromState({
+        'tokens': {
+          // token0 already on the start cell (rel 0); the rest in base.
+          'red': [0, -1, -1, -1],
+          'yellow': [-1, -1, -1, -1],
+        },
+        'turn': 'red',
+        'phase': 'awaiting_move',
+        'dice': 6,
+      });
+      // token0 0->6, and every base token may still leave onto the start cell.
+      expect(ids, ['red_0', 'red_1', 'red_2', 'red_3']);
+    });
+
+    test('every geometrically legal token is offered even when stacking', () {
+      final ids = ServerStateAdapter.movableFromState({
+        'tokens': {
+          // 10->12 (own), 12->14 (own), 14->16 (free); base needs a six.
+          'red': [10, 12, 14, -1],
+          'yellow': [-1, -1, -1, -1],
+        },
+        'turn': 'red',
+        'phase': 'awaiting_move',
+        'dice': 2,
+      });
+      expect(ids, ['red_0', 'red_1', 'red_2']);
     });
 
     test('shared home slot may hold several own tokens', () {

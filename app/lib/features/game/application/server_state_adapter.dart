@@ -104,13 +104,17 @@ class ServerStateAdapter {
 
   /// Recompute the movable token ids for the pending roll directly from the
   /// authoritative snapshot (`turn` + `dice` + `tokens`), mirroring the
-  /// backend's `LudoRules::legalMoves` exactly (leave-base-on-six, no
-  /// overshooting home, no landing on your own token; home may be shared).
+  /// backend's `LudoRules::legalMoves` exactly: leave base only on a six, never
+  /// overshoot home (land exactly on 56), finished tokens are immovable, and
+  /// own-token stacking is ALLOWED — a token may land on a cell already held by
+  /// one of its own tokens (ring, start cell, or home column). Every
+  /// geometrically legal token is therefore offered.
   ///
   /// This is the safety net for a payload whose `legal_moves` was missing or
   /// unparseable: the phase says a move is pending, so the player must always
-  /// be offered their legal tokens — a dice value of 1 included. The server
-  /// still validates whichever token is actually picked.
+  /// be offered their legal tokens — a dice value of 1 included, and a base
+  /// token releasable on a six even when the start cell already holds one of
+  /// its own tokens. The server still validates whichever token is picked.
   static List<String> movableFromState(
     Map<String, dynamic> serverState, {
     RuleConfig rules = const RuleConfig(),
@@ -132,19 +136,10 @@ class ServerStateAdapter {
     for (var i = 0; i < positions.length; i++) {
       final rel = positions[i];
       if (!_canMoveRel(rel, dice, rules)) continue;
-      final to = rel == RuleConfig.inBase ? 0 : rel + dice;
-      // Own-token occupancy: the server disallows stacking on yourself
-      // anywhere except the shared home slot (rel 56).
-      if (to != RuleConfig.homeIndex) {
-        var occupied = false;
-        for (var j = 0; j < positions.length; j++) {
-          if (j != i && positions[j] == to) {
-            occupied = true;
-            break;
-          }
-        }
-        if (occupied) continue;
-      }
+      // Own-token stacking is allowed, so there is no destination-occupancy
+      // rejection: every geometrically legal token is offered. This mirrors the
+      // authoritative `LudoRules::legalMoves`; the server still validates the
+      // actual pick.
       ids.add('${turn}_$i');
     }
     return ids;
