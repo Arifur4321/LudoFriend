@@ -6,9 +6,16 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:intl/intl.dart' as intl;
 
 import 'app_localizations_bn.dart';
+import 'app_localizations_de.dart';
 import 'app_localizations_en.dart';
+import 'app_localizations_es.dart';
 import 'app_localizations_hi.dart';
 import 'app_localizations_it.dart';
+import 'app_localizations_ja.dart';
+import 'app_localizations_ko.dart';
+import 'app_localizations_nl.dart';
+import 'app_localizations_pt.dart';
+import 'app_localizations_zh.dart';
 
 // ignore_for_file: type=lint
 
@@ -97,9 +104,16 @@ abstract class AppLocalizations {
   /// A list of this localizations delegate's supported locales.
   static const List<Locale> supportedLocales = <Locale>[
     Locale('bn'),
+    Locale('de'),
     Locale('en'),
+    Locale('es'),
     Locale('hi'),
-    Locale('it')
+    Locale('it'),
+    Locale('ja'),
+    Locale('ko'),
+    Locale('nl'),
+    Locale('pt'),
+    Locale('zh')
   ];
 
   /// No description provided for @appName.
@@ -156,6 +170,24 @@ abstract class AppLocalizations {
   /// **'Profile'**
   String get profile;
 
+  /// No description provided for @friends.
+  ///
+  /// In en, this message translates to:
+  /// **'Friends'**
+  String get friends;
+
+  /// No description provided for @wallet.
+  ///
+  /// In en, this message translates to:
+  /// **'Wallet'**
+  String get wallet;
+
+  /// No description provided for @store.
+  ///
+  /// In en, this message translates to:
+  /// **'Store'**
+  String get store;
+
   /// No description provided for @howToPlay.
   ///
   /// In en, this message translates to:
@@ -180,17 +212,47 @@ abstract class AppLocalizations {
   /// **'Create Account'**
   String get createAccount;
 
+  /// No description provided for @home.
+  ///
+  /// In en, this message translates to:
+  /// **'Home'**
+  String get home;
+
+  /// No description provided for @ok.
+  ///
+  /// In en, this message translates to:
+  /// **'OK'**
+  String get ok;
+
+  /// No description provided for @cancel.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get cancel;
+
+  /// No description provided for @retry.
+  ///
+  /// In en, this message translates to:
+  /// **'Retry'**
+  String get retry;
+
+  /// No description provided for @close.
+  ///
+  /// In en, this message translates to:
+  /// **'Close'**
+  String get close;
+
+  /// No description provided for @loading.
+  ///
+  /// In en, this message translates to:
+  /// **'Loading…'**
+  String get loading;
+
   /// No description provided for @roll.
   ///
   /// In en, this message translates to:
   /// **'Roll'**
   String get roll;
-
-  /// No description provided for @yourTurn.
-  ///
-  /// In en, this message translates to:
-  /// **'Your turn'**
-  String get yourTurn;
 
   /// No description provided for @rematch.
   ///
@@ -198,17 +260,251 @@ abstract class AppLocalizations {
   /// **'Rematch'**
   String get rematch;
 
-  /// No description provided for @home.
+  /// No description provided for @yourTurn.
   ///
   /// In en, this message translates to:
-  /// **'Home'**
-  String get home;
+  /// **'Your turn'**
+  String get yourTurn;
+
+  /// No description provided for @yourTurnTapDice.
+  ///
+  /// In en, this message translates to:
+  /// **'Your turn — tap the dice!'**
+  String get yourTurnTapDice;
+
+  /// No description provided for @rollTheDice.
+  ///
+  /// In en, this message translates to:
+  /// **'Roll the dice'**
+  String get rollTheDice;
+
+  /// No description provided for @selectAToken.
+  ///
+  /// In en, this message translates to:
+  /// **'Select a token'**
+  String get selectAToken;
+
+  /// No description provided for @tapGlowingToken.
+  ///
+  /// In en, this message translates to:
+  /// **'Tap a glowing token'**
+  String get tapGlowingToken;
+
+  /// No description provided for @rolling.
+  ///
+  /// In en, this message translates to:
+  /// **'Rolling…'**
+  String get rolling;
+
+  /// No description provided for @gameOver.
+  ///
+  /// In en, this message translates to:
+  /// **'Game over'**
+  String get gameOver;
+
+  /// No description provided for @waitingForPlayer.
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting for player'**
+  String get waitingForPlayer;
+
+  /// No description provided for @matchStarted.
+  ///
+  /// In en, this message translates to:
+  /// **'Match started'**
+  String get matchStarted;
+
+  /// No description provided for @matchFinished.
+  ///
+  /// In en, this message translates to:
+  /// **'Match finished'**
+  String get matchFinished;
+
+  /// No description provided for @noLegalMove.
+  ///
+  /// In en, this message translates to:
+  /// **'No legal move'**
+  String get noLegalMove;
+
+  /// No description provided for @playerDisconnected.
+  ///
+  /// In en, this message translates to:
+  /// **'Player disconnected'**
+  String get playerDisconnected;
+
+  /// No description provided for @reconnecting.
+  ///
+  /// In en, this message translates to:
+  /// **'Reconnecting…'**
+  String get reconnecting;
+
+  /// No description provided for @connectionRestored.
+  ///
+  /// In en, this message translates to:
+  /// **'Connection restored'**
+  String get connectionRestored;
 
   /// No description provided for @noConnection.
   ///
   /// In en, this message translates to:
   /// **'No connection'**
   String get noConnection;
+
+  /// No description provided for @messageFailedToSend.
+  ///
+  /// In en, this message translates to:
+  /// **'Message failed to send'**
+  String get messageFailedToSend;
+
+  /// No description provided for @inviteSent.
+  ///
+  /// In en, this message translates to:
+  /// **'Invite sent'**
+  String get inviteSent;
+
+  /// No description provided for @playerJoined.
+  ///
+  /// In en, this message translates to:
+  /// **'Player joined'**
+  String get playerJoined;
+
+  /// No description provided for @playerLeft.
+  ///
+  /// In en, this message translates to:
+  /// **'Player left'**
+  String get playerLeft;
+
+  /// No description provided for @chatHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Message…'**
+  String get chatHint;
+
+  /// No description provided for @chatEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'Say hi to your table 👋'**
+  String get chatEmpty;
+
+  /// No description provided for @audioHaptics.
+  ///
+  /// In en, this message translates to:
+  /// **'Audio & Haptics'**
+  String get audioHaptics;
+
+  /// No description provided for @soundEffects.
+  ///
+  /// In en, this message translates to:
+  /// **'Sound effects'**
+  String get soundEffects;
+
+  /// No description provided for @music.
+  ///
+  /// In en, this message translates to:
+  /// **'Music'**
+  String get music;
+
+  /// No description provided for @vibration.
+  ///
+  /// In en, this message translates to:
+  /// **'Vibration'**
+  String get vibration;
+
+  /// No description provided for @gameplay.
+  ///
+  /// In en, this message translates to:
+  /// **'Gameplay'**
+  String get gameplay;
+
+  /// No description provided for @turnAlerts.
+  ///
+  /// In en, this message translates to:
+  /// **'Turn alerts'**
+  String get turnAlerts;
+
+  /// No description provided for @turnAlertsSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Sound + buzz when it is your turn'**
+  String get turnAlertsSubtitle;
+
+  /// No description provided for @inGameChat.
+  ///
+  /// In en, this message translates to:
+  /// **'In-game chat'**
+  String get inGameChat;
+
+  /// No description provided for @emojiReactions.
+  ///
+  /// In en, this message translates to:
+  /// **'Emoji reactions'**
+  String get emojiReactions;
+
+  /// No description provided for @appSection.
+  ///
+  /// In en, this message translates to:
+  /// **'App'**
+  String get appSection;
+
+  /// No description provided for @language.
+  ///
+  /// In en, this message translates to:
+  /// **'Language'**
+  String get language;
+
+  /// No description provided for @about.
+  ///
+  /// In en, this message translates to:
+  /// **'About'**
+  String get about;
+
+  /// No description provided for @legal.
+  ///
+  /// In en, this message translates to:
+  /// **'Legal'**
+  String get legal;
+
+  /// No description provided for @privacyPolicy.
+  ///
+  /// In en, this message translates to:
+  /// **'Privacy Policy'**
+  String get privacyPolicy;
+
+  /// No description provided for @termsOfService.
+  ///
+  /// In en, this message translates to:
+  /// **'Terms of Service'**
+  String get termsOfService;
+
+  /// No description provided for @dataDeletion.
+  ///
+  /// In en, this message translates to:
+  /// **'Data & account deletion'**
+  String get dataDeletion;
+
+  /// No description provided for @playerThinking.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} is thinking…'**
+  String playerThinking(String name);
+
+  /// No description provided for @playerTurn.
+  ///
+  /// In en, this message translates to:
+  /// **'Turn: {name}'**
+  String playerTurn(String name);
+
+  /// No description provided for @playerMove.
+  ///
+  /// In en, this message translates to:
+  /// **'Move: {name}'**
+  String playerMove(String name);
+
+  /// No description provided for @tokensHome.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =0{No tokens home} one{1 token home} other{{count} tokens home}}'**
+  String tokensHome(int count);
 }
 
 class _AppLocalizationsDelegate
@@ -221,8 +517,19 @@ class _AppLocalizationsDelegate
   }
 
   @override
-  bool isSupported(Locale locale) =>
-      <String>['bn', 'en', 'hi', 'it'].contains(locale.languageCode);
+  bool isSupported(Locale locale) => <String>[
+        'bn',
+        'de',
+        'en',
+        'es',
+        'hi',
+        'it',
+        'ja',
+        'ko',
+        'nl',
+        'pt',
+        'zh'
+      ].contains(locale.languageCode);
 
   @override
   bool shouldReload(_AppLocalizationsDelegate old) => false;
@@ -233,12 +540,26 @@ AppLocalizations lookupAppLocalizations(Locale locale) {
   switch (locale.languageCode) {
     case 'bn':
       return AppLocalizationsBn();
+    case 'de':
+      return AppLocalizationsDe();
     case 'en':
       return AppLocalizationsEn();
+    case 'es':
+      return AppLocalizationsEs();
     case 'hi':
       return AppLocalizationsHi();
     case 'it':
       return AppLocalizationsIt();
+    case 'ja':
+      return AppLocalizationsJa();
+    case 'ko':
+      return AppLocalizationsKo();
+    case 'nl':
+      return AppLocalizationsNl();
+    case 'pt':
+      return AppLocalizationsPt();
+    case 'zh':
+      return AppLocalizationsZh();
   }
 
   throw FlutterError(
