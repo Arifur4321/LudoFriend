@@ -34,6 +34,19 @@ class FacebookFriend {
   final String? pictureUrl;
 }
 
+/// Outcome of an explicit "Sync Facebook friends" permission request.
+class FacebookFriendsSync {
+  const FacebookFriendsSync({required this.completed, this.accessToken});
+
+  /// True when the Facebook dialog finished (whether or not `user_friends`
+  /// was actually granted); false when the user cancelled it.
+  final bool completed;
+
+  /// A fresh access token to hand to the backend so the stored token carries
+  /// the newest permission. Null when the dialog was cancelled.
+  final String? accessToken;
+}
+
 /// Wraps Facebook login. Facebook is **optional** — gameplay never requires it.
 ///
 /// On success it returns the basic profile + access token, which the backend
@@ -122,6 +135,42 @@ class FacebookAuthService {
       pictureUrl: _pictureUrl(data),
       accessToken: token.tokenString,
     );
+  }
+
+  /// Requests the `user_friends` permission so the backend can list Facebook
+  /// friends who ALSO play this app. This runs ONLY on an explicit
+  /// "Sync Facebook friends" tap — never during normal login or app launch —
+  /// so a player who never syncs is never prompted, and cancelling leaves
+  /// login and gameplay completely unaffected.
+  ///
+  /// Returns a fresh access token when the dialog completes, so the caller can
+  /// refresh the server-side token. `user_friends` only yields data once the
+  /// app has Advanced Access approved in the Facebook dashboard; until then
+  /// Facebook returns no friends and the caller shows a safe empty state.
+  Future<FacebookFriendsSync?> requestFriendsSync() async {
+    _ensureEnabled();
+    if (_loginInFlight) {
+      AppLogger.auth('Facebook friends-sync ignored: dialog already open');
+      return null;
+    }
+    _loginInFlight = true;
+    try {
+      final result = await FacebookAuth.instance.login(
+        permissions: const ['public_profile', 'user_friends'],
+      );
+      AppLogger.auth('Facebook friends-sync status=${result.status.name}');
+      final token = result.accessToken;
+      if (result.status != LoginStatus.success || token == null) {
+        // Cancelled or could not complete — not an error.
+        return const FacebookFriendsSync(completed: false);
+      }
+      return FacebookFriendsSync(
+        completed: true,
+        accessToken: token.tokenString,
+      );
+    } finally {
+      _loginInFlight = false;
+    }
   }
 
   Future<List<FacebookFriend>> friends() async {

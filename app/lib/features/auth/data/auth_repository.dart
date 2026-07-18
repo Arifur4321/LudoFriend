@@ -116,6 +116,28 @@ class AuthRepository {
     }
   }
 
+  /// Re-verify a fresh Facebook token with the backend so the stored
+  /// SocialAccount access token is refreshed with the newest permission
+  /// (used by "Sync Facebook friends"). This intentionally does NOT change the
+  /// local session: the current Sanctum token stays in place, so a player who
+  /// signed in another way is never switched to a different account.
+  Future<void> refreshFacebookToken(String accessToken) async {
+    try {
+      await _dio.post(
+        ApiEndpoints.facebook,
+        data: {'access_token': accessToken},
+      );
+      AppLogger.auth('Facebook token refreshed for friend sync');
+    } catch (e) {
+      // Non-fatal: the sync simply falls back to an empty friends list.
+      if (e is DioException) {
+        AppLogger.auth(
+          'Facebook token refresh failed status=${e.response?.statusCode}',
+        );
+      }
+    }
+  }
+
   Future<Result<AuthUser>> google({
     required String idToken,
     String? serverAuthCode,

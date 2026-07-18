@@ -148,10 +148,19 @@ class AuthController extends Controller
             if ($social) {
                 $user = $social->user;
 
-                // Keep the linked social row's stored photo current.
+                // Always refresh the stored Facebook access token with the
+                // newest one from this login. The `encrypted` cast keeps it
+                // encrypted at rest, and a later "Sync Facebook friends" call
+                // then authorizes against a live token instead of a stale or
+                // expired one. The avatar is refreshed too when Facebook
+                // returns a photo. The raw token is never logged.
+                $social->access_token = $request->string('access_token');
+
                 if (! empty($profile['avatar'])) {
-                    $social->update(['avatar_url' => $profile['avatar']]);
+                    $social->avatar_url = $profile['avatar'];
                 }
+
+                $social->save();
             } else {
                 // Link to an existing email account if one exists, else create.
                 $user = ($profile['email'] ? User::where('email', $profile['email'])->first() : null)

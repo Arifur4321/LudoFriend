@@ -5,11 +5,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../../../core/config/app_config.dart';
 import '../../../core/router/app_routes.dart';
+import '../../../services/facebook/facebook_auth_service.dart';
+import '../../../services/social/social_auth_exception.dart';
 import '../../../shared/theme/app_colors.dart';
 import '../../../shared/theme/app_text_styles.dart';
 import '../../../shared/widgets/app_background.dart';
 import '../../auth/application/auth_controller.dart';
+import '../../auth/data/auth_repository.dart';
 import '../../room/data/room_repository.dart';
 import '../data/friends_repository.dart';
 
@@ -76,22 +80,64 @@ class _FriendsScreenState extends ConsumerState<FriendsScreen> {
 
   Future<void> _syncFacebook() async {
     setState(() => _syncing = true);
-    final res = await ref.read(friendsRepositoryProvider).facebookFriends();
-    if (!mounted) return;
-    setState(() => _syncing = false);
-    res.when(
-      ok: (friends) {
-        setState(() {
-          for (final f in friends) {
-            _friends[f.id] = f;
-          }
-        });
-        if (friends.isEmpty) {
-          _toast('No app-connected Facebook friends found yet.');
+    try {
+      // Ask for the user_friends permission ONLY on this explicit tap — never
+      // on login or app launch. When Facebook isn't configured for this build
+      // we skip to the server, which safely returns an empty list.
+      if (AppConfig.facebookEnabled) {
+        final sync =
+            await ref.read(facebookAuthServiceProvider).requestFriendsSync();
+        if (!mounted) return;
+
+        if (sync == null) {
+          // A Facebook dialog was already open — ignore this tap.
+          setState(() => _syncing = false);
+          return;
         }
-      },
-      err: (f) => _toast(f.message),
-    );
+        if (sync.accessToken == null) {
+          // Cancelled / declined: login and gameplay are unaffected.
+          setState(() => _syncing = false);
+          _toast("Facebook wasn't connected, so there's nothing to sync. "
+              'You can still add friends by code.');
+          return;
+        }
+
+        // Refresh the server-side token so it carries the new permission.
+        // Done silently — the current session/account never changes.
+        await ref
+            .read(authRepositoryProvider)
+            .refreshFacebookToken(sync.accessToken!);
+        if (!mounted) return;
+      }
+
+      final res = await ref.read(friendsRepositoryProvider).facebookFriends();
+      if (!mounted) return;
+      setState(() => _syncing = false);
+      res.when(
+        ok: (friends) {
+          setState(() {
+            for (final f in friends) {
+              _friends[f.id] = f;
+            }
+          });
+          if (friends.isEmpty) {
+            // Only friends who ALSO use the app can ever appear here — this is
+            // never the full Facebook friend list.
+            _toast('No Facebook friends who also play were found. Only friends '
+                'who use the app can appear here.');
+          }
+        },
+        err: (f) => _toast(f.message),
+      );
+    } on SocialAuthException catch (e) {
+      if (!mounted) return;
+      setState(() => _syncing = false);
+      _toast(e.message);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _syncing = false);
+      _toast('Could not sync Facebook friends. Please try again.');
+    }
   }
 
   Future<void> _add() async {

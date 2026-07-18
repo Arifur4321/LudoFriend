@@ -14,6 +14,7 @@ use App\Models\RecentPlayer;
 use App\Models\SocialAccount;
 use App\Models\User;
 use App\Services\FacebookService;
+use Illuminate\Contracts\Encryption\DecryptException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -146,12 +147,39 @@ class FriendController extends Controller
         $user = $request->user();
         $social = $user->socialAccounts()->where('provider', 'facebook')->first();
 
-        if (! $social || ! $social->access_token) {
-            return response()->json(['data' => []]);
+        // Reading access_token runs the encrypted cast. A token encrypted under
+        // a rotated APP_KEY (or otherwise corrupt) throws a DecryptException —
+        // historically a 500. Treat that, and a missing/empty token, as "please
+        // reconnect Facebook": a 200 with an empty list and a reauth_required
+        // flag the app uses to re-request access. The token is only ever held
+        // in a local variable and passed to the Graph client; it is never
+        // logged or returned.
+        $accessToken = null;
+
+        if ($social) {
+            try {
+                $accessToken = $social->access_token;
+            } catch (DecryptException) {
+                $accessToken = null;
+            }
         }
 
-        $fbIds = collect($facebook->appFriends($social->access_token))
-            ->pluck('id')->filter()->values();
+        if (! $accessToken) {
+            return response()->json([
+                'data' => [],
+                'meta' => ['reauth_required' => true],
+            ]);
+        }
+
+        // appFriends() already swallows Graph API errors and returns []; the
+        // extra guard makes certain that no unexpected Facebook/Graph failure
+        // can ever surface as a 500 from this endpoint.
+        try {
+            $fbIds = collect($facebook->appFriends($accessToken))
+                ->pluck('id')->filter()->values();
+        } catch (\Throwable) {
+            return response()->json(['data' => []]);
+        }
 
         if ($fbIds->isEmpty()) {
             return response()->json(['data' => []]);
