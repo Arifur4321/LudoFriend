@@ -86,6 +86,7 @@ class GameScreen extends ConsumerWidget {
         homeCount: homeCount,
         online: !p.isBot,
         mirror: mirror,
+        teamSide: config.teamMode ? c.teamSide : null,
       );
       final die = _PodDice(
         active: isActive,
@@ -221,6 +222,17 @@ class GameScreen extends ConsumerWidget {
                   winnerName: game.players
                       .firstWhere((p) => p.color == game.winner)
                       .name,
+                  teamWin: config.teamMode,
+                  teamLabel: config.teamMode
+                      ? LudoColor.teamLabel(game.winner!.teamSide)
+                      : null,
+                  teammateNames: config.teamMode
+                      ? game.players
+                          .where(
+                              (p) => p.color.teamSide == game.winner!.teamSide)
+                          .map((p) => p.name)
+                          .toList()
+                      : const [],
                   onRematch: () => config.isOnline
                       ? context.go(AppRoutes.home)
                       : _rematch(ref, config),

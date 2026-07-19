@@ -101,7 +101,8 @@ class GameController extends StateNotifier<GameSession> {
   /// animating. The turn-timer auto-act consults this so a timeout can never
   /// fire a second action on top of one the player already started (a manual
   /// move must always win the race against its own turn timer).
-  bool get isActionInFlight => _busy || _gate.isSubmitting || state.isBusy;
+  bool get isActionInFlight =>
+      _busy || _refreshing || _gate.isSubmitting || state.isBusy;
 
   /// Whether the realtime channel is trustworthy enough to skip a recovery
   /// poll: the socket is connected AND an authoritative match event arrived
@@ -478,7 +479,11 @@ class GameController extends StateNotifier<GameSession> {
     // firing at the same instant) is ignored until this roll fully resolves, so
     // exactly one roll request leaves the device per turn.
     if (!_gate.beginSubmission()) return;
-    if (_busy || !state.canRoll || config.myColor == null) {
+    // Also stand down while a forced resync is reconciling authoritative truth:
+    // after a failed/interrupted roll the lock is released before the resync
+    // awaits, and without this a re-tap (or the turn-timer auto-act) could fire
+    // a SECOND roll with a new action_id during that window.
+    if (_busy || _refreshing || !state.canRoll || config.myColor == null) {
       _gate.endSubmission();
       return;
     }
@@ -611,7 +616,11 @@ class GameController extends StateNotifier<GameSession> {
     // move fully resolves — exactly one move request leaves the device per
     // tap. It also fences a token tap out while a roll is still in flight.
     if (!_gate.beginSubmission()) return;
-    if (_busy || !state.game.pendingMovableTokenIds.contains(tokenId)) {
+    // Stand down while a forced resync is reconciling (same window as _sendRoll):
+    // a re-tap during the post-action resync must not start a second move.
+    if (_busy ||
+        _refreshing ||
+        !state.game.pendingMovableTokenIds.contains(tokenId)) {
       _gate.endSubmission();
       return;
     }

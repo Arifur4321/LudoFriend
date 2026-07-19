@@ -34,4 +34,31 @@ return [
             'Sofia', 'Emma', 'Mia', 'Lucas', 'Leo', 'Noah',
         ],
     ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Online bot-turn driver (server-authoritative)
+    |--------------------------------------------------------------------------
+    |
+    | Timing + safety knobs for the PlayBotTurn job that advances bot seats on
+    | the server. These do NOT change dice probabilities or Ludo movement rules
+    | — only the presentation delay and the loop/recovery bounds.
+    |
+    */
+    'turn' => [
+        // Human-like "thinking" pause before each bot action (milliseconds).
+        'think_min_ms' => (int) env('LUDO_BOT_THINK_MIN_MS', 600),
+        'think_max_ms' => (int) env('LUDO_BOT_THINK_MAX_MS', 1200),
+
+        // Hard bound on the actions one bot-turn job may take (infinite-loop
+        // guard across consecutive extra turns).
+        'max_actions' => (int) env('LUDO_BOT_MAX_ACTIONS', 60),
+
+        // Best-effort per-match execution lock TTL (seconds).
+        'lock_seconds' => (int) env('LUDO_BOT_LOCK_SECONDS', 20),
+
+        // The recovery sweep only re-drives a bot turn pending at least this
+        // long (seconds) — never a fresh transition.
+        'recovery_after_seconds' => (int) env('LUDO_BOT_RECOVERY_SECONDS', 8),
+    ],
 ];

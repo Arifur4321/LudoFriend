@@ -15,12 +15,17 @@ class PlayerPod extends StatelessWidget {
     this.online = true,
     this.mirror = false,
     this.avatarRadius = 26,
+    this.teamSide,
   });
 
   final GamePlayer player;
   final bool active;
   final int homeCount;
   final bool online;
+
+  /// 2v2 team side (0 = Team A, 1 = Team B) rendered as a small badge on the
+  /// name pill; null in non-team games (no badge shown).
+  final int? teamSide;
 
   /// When true the pod is laid out right-to-left (for the right-hand corners).
   final bool mirror;
@@ -70,15 +75,34 @@ class PlayerPod extends StatelessWidget {
                     color: Colors.black26, blurRadius: 3, offset: Offset(0, 1)),
               ],
             ),
-            child: Text(
-              player.name,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: active ? Colors.white : AppColors.ink,
-                fontWeight: FontWeight.w800,
-                fontSize: 13,
-              ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (teamSide != null)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 5),
+                    child: Text(
+                      teamSide == 0 ? 'A' : 'B',
+                      style: TextStyle(
+                        color: active ? Colors.white : color,
+                        fontWeight: FontWeight.w900,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+                Flexible(
+                  child: Text(
+                    player.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: active ? Colors.white : AppColors.ink,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 13,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
           const SizedBox(height: 4),

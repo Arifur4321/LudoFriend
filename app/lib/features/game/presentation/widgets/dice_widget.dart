@@ -108,7 +108,14 @@ class _DiceWidgetState extends ConsumerState<DiceWidget>
                 double angle = 0, bounce = 0, sx = 1, sy = 1;
                 if (rolling) {
                   final t = _roll.value;
-                  bounce = -math.sin(t * math.pi) * widget.size * 0.22;
+                  // Hover + tumble CONTINUOUSLY while waiting on the server: the
+                  // die never drops back to the ground mid-wait, so a single roll
+                  // reads as one ongoing throw instead of a series of hops that
+                  // each looked like a separate roll (the "dice rolls multiple
+                  // times" report). It settles onto the authoritative face via
+                  // _settle the instant `rolling` clears.
+                  bounce =
+                      -widget.size * (0.16 + 0.06 * math.sin(t * 2 * math.pi));
                   angle = math.sin(t * 2 * math.pi) * 0.5;
                   sy = 0.82 + 0.18 * math.cos(t * 2 * math.pi).abs();
                 } else if (_settle.isAnimating) {

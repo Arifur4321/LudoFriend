@@ -44,10 +44,15 @@ class MatchmakingRepository {
   /// Enqueue for [mode] ('2p' or '4p'). When a full human table was already
   /// waiting the ticket comes back already `matched` (with room + match ids),
   /// so the caller can navigate straight into the started match.
-  Future<Result<MatchmakingStatus>> enqueue(String mode) async {
+  Future<Result<MatchmakingStatus>> enqueue(
+    String mode, {
+    bool teamMode = false,
+  }) async {
     try {
-      final res = await _dio
-          .post(ApiEndpoints.matchmakingEnqueue, data: {'mode': mode});
+      final res = await _dio.post(
+        ApiEndpoints.matchmakingEnqueue,
+        data: {'mode': mode, 'team_mode': teamMode},
+      );
       return Ok(MatchmakingStatus.fromJson(_data(res.data)));
     } catch (e) {
       return Err(DioClient.mapError(e));

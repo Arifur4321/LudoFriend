@@ -24,6 +24,10 @@ class RoomPlayerModel {
 
   bool get isWaiting => userId == null && !isBot;
 
+  /// 2v2 team side derived from color: 0 = Team A (red/yellow), 1 = Team B
+  /// (green/blue). Only meaningful in a team room; matches the backend seat%2.
+  int get teamSide => (color == 'red' || color == 'yellow') ? 0 : 1;
+
   factory RoomPlayerModel.fromJson(Map<String, dynamic> j) {
     final user = j['user'];
     final u = user is Map<String, dynamic> ? user : null;
@@ -53,6 +57,7 @@ class RoomModel {
     required this.status,
     required this.capacity,
     required this.turnTimerSeconds,
+    this.teamMode = false,
     this.matchId,
     this.players = const [],
   });
@@ -65,6 +70,7 @@ class RoomModel {
   final String status;
   final int capacity;
   final int turnTimerSeconds;
+  final bool teamMode;
   final int? matchId;
   final List<RoomPlayerModel> players;
 
@@ -85,6 +91,7 @@ class RoomModel {
       status: j['status'] as String? ?? 'lobby',
       capacity: (j['capacity'] as num?)?.toInt() ?? 4,
       turnTimerSeconds: (j['turn_timer_seconds'] as num?)?.toInt() ?? 20,
+      teamMode: j['team_mode'] as bool? ?? false,
       matchId: (j['match_id'] as num?)?.toInt(),
       players: players,
     );

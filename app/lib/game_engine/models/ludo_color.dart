@@ -44,4 +44,17 @@ enum LudoColor {
     LudoColor.yellow,
     LudoColor.blue,
   ];
+
+  /// 2v2 team side for this color: 0 = Team A (red + yellow, seats 0 & 2),
+  /// 1 = Team B (green + blue, seats 1 & 3). Matches the backend's seat%2 team
+  /// assignment exactly (the canonical seat order is red, green, yellow, blue).
+  int get teamSide =>
+      (this == LudoColor.red || this == LudoColor.yellow) ? 0 : 1;
+
+  /// The two colors that make up each 2v2 team side.
+  static const List<LudoColor> teamA = [LudoColor.red, LudoColor.yellow];
+  static const List<LudoColor> teamB = [LudoColor.green, LudoColor.blue];
+
+  /// Human-readable label for a team side (0 => 'Team A', 1 => 'Team B').
+  static String teamLabel(int side) => side == 0 ? 'Team A' : 'Team B';
 }

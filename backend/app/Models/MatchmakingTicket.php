@@ -14,6 +14,7 @@ class MatchmakingTicket extends Model
     protected $fillable = [
         'user_id',
         'mode',
+        'team_mode',
         'board_tier',
         'stake',
         'status',
@@ -26,6 +27,7 @@ class MatchmakingTicket extends Model
     {
         return [
             'stake' => 'integer',
+            'team_mode' => 'boolean',
             'rating' => 'integer',
             'enqueued_at' => 'datetime',
         ];

@@ -19,12 +19,25 @@ class WinnerOverlay extends StatefulWidget {
     required this.winnerName,
     required this.onRematch,
     required this.onHome,
+    this.teamWin = false,
+    this.teamLabel,
+    this.teammateNames = const [],
   });
 
   final LudoColor winner;
   final String winnerName;
   final VoidCallback onRematch;
   final VoidCallback onHome;
+
+  /// True when the match was a 2v2 team game — the overlay then celebrates the
+  /// winning TEAM rather than a single player.
+  final bool teamWin;
+
+  /// e.g. 'Team A' — the headline shown when [teamWin].
+  final String? teamLabel;
+
+  /// The winning team's two player names, shown under the team headline.
+  final List<String> teammateNames;
 
   @override
   State<WinnerOverlay> createState() => _WinnerOverlayState();
@@ -124,18 +137,24 @@ class _WinnerOverlayState extends State<WinnerOverlay>
                         size: 64, color: Colors.white),
                   ),
                   const SizedBox(height: 14),
-                  Text('WINNER',
+                  Text(widget.teamWin ? 'WINNING TEAM' : 'WINNER',
                       style: AppTextStyles.label.copyWith(
                         color: const Color(0xFFFF8F00),
                         letterSpacing: 4,
                         fontWeight: FontWeight.w800,
                       )),
                   const SizedBox(height: 4),
-                  Text('${widget.winnerName} wins! 🏆',
+                  Text(
+                      widget.teamWin
+                          ? '${widget.teamLabel ?? 'Team'} wins! 🏆'
+                          : '${widget.winnerName} wins! 🏆',
                       style: AppTextStyles.heading.copyWith(color: color),
                       textAlign: TextAlign.center),
                   const SizedBox(height: 6),
-                  Text('What a game 🎉',
+                  Text(
+                      widget.teamWin && widget.teammateNames.isNotEmpty
+                          ? widget.teammateNames.join('  &  ')
+                          : 'What a game 🎉',
                       style: AppTextStyles.bodyMuted,
                       textAlign: TextAlign.center),
                   const SizedBox(height: 22),

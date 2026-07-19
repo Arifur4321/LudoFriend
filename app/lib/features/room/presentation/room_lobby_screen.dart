@@ -223,6 +223,23 @@ class _RoomLobbyScreenState extends ConsumerState<RoomLobbyScreen> {
                   ),
                 ),
                 const SizedBox(height: 16),
+                if (room.teamMode) ...[
+                  Container(
+                    width: double.infinity,
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.14),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      '2v2 Teams — Team A (red · yellow)  vs  Team B (green · blue)',
+                      textAlign: TextAlign.center,
+                      style: AppTextStyles.label.copyWith(color: Colors.white),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                ],
                 Expanded(
                   child: ListView.separated(
                     itemCount: room.capacity,
@@ -231,7 +248,11 @@ class _RoomLobbyScreenState extends ConsumerState<RoomLobbyScreen> {
                       final seat = i < room.players.length
                           ? room.players[i]
                           : null;
-                      return _SeatTile(seat: seat, index: i);
+                      return _SeatTile(
+                        seat: seat,
+                        index: i,
+                        teamMode: room.teamMode,
+                      );
                     },
                   ),
                 ),
@@ -266,9 +287,14 @@ class _RoomLobbyScreenState extends ConsumerState<RoomLobbyScreen> {
 }
 
 class _SeatTile extends StatelessWidget {
-  const _SeatTile({required this.seat, required this.index});
+  const _SeatTile({
+    required this.seat,
+    required this.index,
+    this.teamMode = false,
+  });
   final RoomPlayerModel? seat;
   final int index;
+  final bool teamMode;
 
   @override
   Widget build(BuildContext context) {
@@ -311,6 +337,24 @@ class _SeatTile extends StatelessWidget {
           ),
           const SizedBox(width: 12),
           Expanded(child: Text(name, style: AppTextStyles.body)),
+          if (teamMode)
+            Container(
+              margin: const EdgeInsets.only(left: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.14),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: color.withValues(alpha: 0.5)),
+              ),
+              child: Text(
+                index.isEven ? 'Team A' : 'Team B',
+                style: TextStyle(
+                  color: color,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 11,
+                ),
+              ),
+            ),
           if (!waiting)
             Icon(
               (seat!.isReady || seat!.isBot)

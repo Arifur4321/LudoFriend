@@ -289,6 +289,11 @@ class RoomService
 
         $this->flushBroadcasts($broadcasts);
 
+        // If the opening turn belongs to a bot, start the server-side driver.
+        // (Not possible today since the host takes seat 0 / the first turn, but
+        // kept for safety and any future seating order.)
+        $this->engine->maybeDispatchBotTurn($match);
+
         return $match;
     }
 

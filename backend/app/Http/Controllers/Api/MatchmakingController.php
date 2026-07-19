@@ -15,9 +15,23 @@ class MatchmakingController extends Controller
     /** Enqueue the caller for a mode. */
     public function enqueue(Request $request): JsonResponse
     {
-        $request->validate(['mode' => ['required', 'in:2p,4p']]);
+        $request->validate([
+            'mode' => ['required', 'in:2p,4p'],
+            'team_mode' => ['sometimes', 'boolean'],
+        ]);
 
-        $ticket = $this->matchmaking->enqueue($request->user(), $request->string('mode'));
+        $mode = $request->string('mode')->toString();
+        $teamMode = $request->boolean('team_mode');
+
+        // Team 2v2 is a four-player-only queue.
+        if ($teamMode && $mode !== '4p') {
+            return response()->json(
+                ['message' => 'Team 2v2 matchmaking requires 4-player mode.'],
+                422,
+            );
+        }
+
+        $ticket = $this->matchmaking->enqueue($request->user(), $mode, $teamMode);
 
         // When enqueue completed a full human table immediately, surface the
         // room + match so the client can navigate straight in.
@@ -30,6 +44,7 @@ class MatchmakingController extends Controller
             'data' => [
                 'ticket_id' => $ticket->id,
                 'status' => $ticket->status,
+                'team_mode' => (bool) $ticket->team_mode,
                 'room_id' => $ticket->room_id,
                 'match_id' => $matchId,
             ],

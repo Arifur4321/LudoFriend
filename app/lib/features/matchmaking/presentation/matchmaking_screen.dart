@@ -39,6 +39,7 @@ class _MatchmakingScreenState extends ConsumerState<MatchmakingScreen> {
   int _elapsed = 0;
   _Phase _phase = _Phase.choosing;
   String _mode = '4p';
+  bool _team = false;
   bool _polling = false;
   bool _navigated = false;
 
@@ -54,10 +55,11 @@ class _MatchmakingScreenState extends ConsumerState<MatchmakingScreen> {
     super.dispose();
   }
 
-  Future<void> _startSearch(String mode) async {
+  Future<void> _startSearch(String mode, {bool team = false}) async {
     if (_phase != _Phase.choosing) return; // guard rapid double-taps
     setState(() {
       _mode = mode;
+      _team = team;
       _phase = _Phase.searching;
       _elapsed = 0;
     });
@@ -65,7 +67,9 @@ class _MatchmakingScreenState extends ConsumerState<MatchmakingScreen> {
       if (mounted) setState(() => _elapsed++);
     });
 
-    final res = await ref.read(matchmakingRepositoryProvider).enqueue(mode);
+    final res = await ref
+        .read(matchmakingRepositoryProvider)
+        .enqueue(mode, teamMode: team);
     if (!mounted) return;
     res.when(
       ok: (s) {
@@ -226,6 +230,14 @@ class _MatchmakingScreenState extends ConsumerState<MatchmakingScreen> {
           color: AppColors.tokenRed,
           onTap: () => _startSearch('4p'),
         ),
+        const SizedBox(height: 16),
+        _ModeChoice(
+          title: 'Team 2v2',
+          subtitle: 'Four players · two teams',
+          icon: Icons.group_rounded,
+          color: AppColors.primary,
+          onTap: () => _startSearch('4p', team: true),
+        ),
         const SizedBox(height: 28),
         TextButton(
           onPressed: () =>
@@ -252,7 +264,8 @@ class _MatchmakingScreenState extends ConsumerState<MatchmakingScreen> {
         const SizedBox(height: 24),
         Text('Finding players…', style: AppTextStyles.display),
         const SizedBox(height: 8),
-        Text('${_mode == '2p' ? '2-player' : '4-player'} · searching ${_elapsed}s',
+        Text(
+            '${_team ? 'Team 2v2' : (_mode == '2p' ? '2-player' : '4-player')} · searching ${_elapsed}s',
             style: AppTextStyles.body.copyWith(color: Colors.white70)),
         const SizedBox(height: 36),
         if (showFallback) ...[

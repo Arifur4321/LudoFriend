@@ -49,9 +49,16 @@ class MatchmakingService
      * an existing `queued` ticket is reused, and a user still inside an ongoing
      * matched game keeps that ticket instead of being queued into a second room.
      */
-    public function enqueue(User $user, string $mode): MatchmakingTicket
+    public function enqueue(User $user, string $mode, bool $teamMode = false): MatchmakingTicket
     {
-        $ticket = DB::transaction(function () use ($user, $mode) {
+        // Team 2v2 is a four-player-only queue, kept entirely separate from
+        // free-for-all so the two are never mixed and team tables are never
+        // bot-filled.
+        if ($teamMode) {
+            $mode = '4p';
+        }
+
+        $ticket = DB::transaction(function () use ($user, $mode, $teamMode) {
             // Lock this user's active tickets so two taps can't create two.
             $active = MatchmakingTicket::where('user_id', $user->id)
                 ->whereIn('status', ['queued', 'matched'])
@@ -59,8 +66,19 @@ class MatchmakingService
                 ->orderByDesc('id')
                 ->get();
 
-            // Reuse a live queue ticket (idempotent enqueue).
+            // Reuse a live queue ticket (idempotent enqueue). If the player
+            // switched queue (mode or team choice), re-point that single active
+            // ticket instead of creating a second — a user never holds both a
+            // free-for-all and a team ticket at once.
             if ($queued = $active->firstWhere('status', 'queued')) {
+                if ($queued->mode !== $mode || (bool) $queued->team_mode !== $teamMode) {
+                    $queued->update([
+                        'mode' => $mode,
+                        'team_mode' => $teamMode,
+                        'enqueued_at' => now(),
+                    ]);
+                }
+
                 return $queued;
             }
 
@@ -78,6 +96,7 @@ class MatchmakingService
             return MatchmakingTicket::create([
                 'user_id' => $user->id,
                 'mode' => $mode,
+                'team_mode' => $teamMode,
                 'status' => 'queued',
                 'rating' => optional($user->stats()->forPeriod('all_time')->first())->rating
                     ?? config('ludo.rating_default'),
@@ -89,12 +108,13 @@ class MatchmakingService
             'ticket_id' => $ticket->id,
             'user_id' => $user->id,
             'mode' => $mode,
+            'team_mode' => $teamMode,
             'reused' => ! $ticket->wasRecentlyCreated,
         ]);
 
         // Only a fresh queue entry can complete a table right now.
         if ($ticket->status === 'queued') {
-            $this->matchWaitingPlayers($mode);
+            $this->matchWaitingPlayers($mode, (bool) $ticket->team_mode);
             $ticket = $ticket->fresh() ?? $ticket;
         }
 
@@ -159,7 +179,10 @@ class MatchmakingService
                 $started = DB::transaction(function () use ($mode, $cutoff, &$filled) {
                     $needed = $this->seatsFor($mode);
 
+                    // Never bot-fill team tickets: team 2v2 requires four real
+                    // humans, so it is excluded from the bot-fill sweep entirely.
                     $candidates = MatchmakingTicket::where('mode', $mode)
+                        ->where('team_mode', false)
                         ->where('status', 'queued')
                         ->orderBy('enqueued_at')
                         ->limit(self::CANDIDATE_POOL)
@@ -206,12 +229,15 @@ class MatchmakingService
      * $mode, anchor on the oldest ticket and randomly select the remaining
      * humans from a bounded pool (fair, concurrency-safe, no ORDER BY RAND()).
      */
-    private function matchWaitingPlayers(string $mode): void
+    private function matchWaitingPlayers(string $mode, bool $teamMode = false): void
     {
-        DB::transaction(function () use ($mode) {
+        DB::transaction(function () use ($mode, $teamMode) {
             $needed = $this->seatsFor($mode);
 
+            // Filter by team_mode so team tickets are ONLY ever paired with other
+            // team tickets — the free-for-all and team queues never mix.
             $candidates = MatchmakingTicket::where('mode', $mode)
+                ->where('team_mode', $teamMode)
                 ->where('status', 'queued')
                 ->orderBy('enqueued_at')
                 ->limit(self::CANDIDATE_POOL)
@@ -219,7 +245,9 @@ class MatchmakingService
                 ->get();
 
             if ($candidates->count() < $needed) {
-                return; // not enough real players yet — the sweep will bot-fill
+                // Not enough real players yet. Free-for-all waits for the bot-fill
+                // sweep; team play simply keeps waiting for four humans.
+                return;
             }
 
             // Oldest ticket anchors the group; the remaining seats are filled by
@@ -228,10 +256,12 @@ class MatchmakingService
             $rest = $candidates->slice(1)->shuffle()->take($needed - 1);
             $group = collect([$anchor])->merge($rest);
 
-            $match = $this->formRoom($group, $mode, botFill: false);
+            // Team matchmaking is ALWAYS four real humans — never bot-filled.
+            $match = $this->formRoom($group, $mode, botFill: false, teamMode: $teamMode);
 
             Log::info('matchmaking.matched_humans', [
                 'mode' => $mode,
+                'team_mode' => $teamMode,
                 'room_id' => $match->room_id,
                 'match_id' => $match->id,
                 'ticket_ids' => $group->pluck('id')->values()->all(),
@@ -246,7 +276,7 @@ class MatchmakingService
      *
      * @param  Collection<int,MatchmakingTicket>  $tickets
      */
-    private function formRoom(Collection $tickets, string $mode, bool $botFill): Matchup
+    private function formRoom(Collection $tickets, string $mode, bool $botFill, bool $teamMode = false): Matchup
     {
         $tickets = $tickets->values();
         $host = $tickets->first()->user;
@@ -255,6 +285,7 @@ class MatchmakingService
             'mode' => $mode,
             'visibility' => 'public',
             'board_tier' => 'casual', // matchmaking is always the free casual board
+            'team_mode' => $teamMode,
             'bot_fill' => $botFill,
         ]);
 

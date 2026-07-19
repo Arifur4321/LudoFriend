@@ -7,6 +7,7 @@ use App\Events\GameEnded;
 use App\Events\TokenMoved;
 use App\Events\TurnChanged;
 use App\Jobs\PersistMatchReplay;
+use App\Jobs\PlayBotTurn;
 use App\Models\MatchEvent;
 use App\Models\MatchState;
 use App\Models\Matchup;
@@ -150,12 +151,18 @@ class GameEngineService
         string $color,
         ?int $forcedDice = null,
         ?string $actionId = null,
+        bool $dispatchBots = true,
     ): array {
         $color = strtolower($color);
         $broadcasts = [];
 
         $result = DB::transaction(function () use ($match, $color, $forcedDice, $actionId, &$broadcasts) {
             $row = MatchState::where('match_id', $match->id)->lockForUpdate()->first();
+            if (! $row) {
+                // Missing authoritative state for an active match: surface a clean
+                // domain error (HTTP 422) rather than a null-deref 500.
+                throw new RuntimeException('Match state not initialized.');
+            }
             $state = $row->state;
 
             // A transport retry must not become a second dice roll. Only replay
@@ -285,6 +292,13 @@ class GameEngineService
 
         $this->flushBroadcasts($broadcasts);
 
+        // If the turn now belongs to a bot, hand it to the server-side driver.
+        // Suppressed when the caller is the bot driver itself (it loops through
+        // consecutive bot turns on its own), preventing a dispatch storm.
+        if ($dispatchBots) {
+            $this->maybeDispatchBotTurn($match, $result['state'] ?? null);
+        }
+
         return $result;
     }
 
@@ -340,12 +354,18 @@ class GameEngineService
         int $tokenIndex,
         ?int $clientSeq = null,
         ?string $actionId = null,
+        bool $dispatchBots = true,
     ): array {
         $color = strtolower($color);
         $broadcasts = [];
 
         $result = DB::transaction(function () use ($match, $color, $tokenIndex, $clientSeq, $actionId, &$broadcasts) {
             $row = MatchState::where('match_id', $match->id)->lockForUpdate()->first();
+            if (! $row) {
+                // Missing authoritative state for an active match: surface a clean
+                // domain error (HTTP 422) rather than a null-deref 500.
+                throw new RuntimeException('Match state not initialized.');
+            }
             $state = $row->state;
 
             // Idempotency: a transport retry of the SAME physical tap must not
@@ -399,8 +419,15 @@ class GameEngineService
                 throw new RuntimeException('Illegal move for the current dice value.');
             }
 
-            // Authoritatively apply.
-            $result = $this->rules->applyMove($color, $tokenIndex, $dice, $state['tokens']);
+            // Authoritatively apply. applyMove throws \InvalidArgumentException on
+            // illegal geometry; the legal-set check above already guards this, but
+            // convert defensively to a domain RuntimeException so the HTTP layer
+            // returns 422 (never a 500) even if it is somehow reached.
+            try {
+                $result = $this->rules->applyMove($color, $tokenIndex, $dice, $state['tokens']);
+            } catch (\InvalidArgumentException $e) {
+                throw new RuntimeException('Illegal move for the current dice value.');
+            }
             $state['tokens'] = $result['tokens'];
             $path = $this->movementPath($result['from'], $result['to']);
 
@@ -445,18 +472,36 @@ class GameEngineService
                 ]);
             }
 
-            // Winner check for the moving color.
-            $winner = null;
-            if ($this->rules->isWinner($state['tokens'][$color])) {
+            // Winner check for the moving color. A color "finishes" when all its
+            // tokens are home. In free-for-all the first color to finish wins the
+            // match. In 2v2 team mode the match ends ONLY when BOTH teammates
+            // (every color on the finisher's team) have finished — a single
+            // teammate finishing must NOT end the match or win for the pair.
+            $colorFinished = $this->rules->isWinner($state['tokens'][$color]);
+            if ($colorFinished) {
                 $state['finished'][$color] = true;
-                $winner = $color;
-                $state['winner'] = $color;
             }
 
-            // Decide turn flow: extra turn if six/capture/home, unless forfeited
-            // (handled in roll). After a move the six-counter only persists when
-            // an extra turn is granted by a six.
-            $extraTurn = $result['extra_turn'] && $winner === null;
+            $winner = null;
+            if ($colorFinished) {
+                if ($match->team_mode) {
+                    if ($this->teamHasFinished($match, $state, $color)) {
+                        $winner = $color; // representative finisher of the team
+                        $state['winner'] = $color;
+                    }
+                } else {
+                    $winner = $color;
+                    $state['winner'] = $color;
+                }
+            }
+
+            // Decide turn flow. An extra turn (six / capture / reached-home) is
+            // only granted while the moving color still has tokens in play; a
+            // color that just brought its LAST token home has nothing left to
+            // move, so its turn passes (advanceTurn skips finished colors). This
+            // keeps team mode flowing to the partner instead of stalling on a
+            // dead extra roll. Forfeits are handled in roll().
+            $extraTurn = $result['extra_turn'] && $winner === null && ! $colorFinished;
 
             $turnPassed = false;
             if ($winner !== null) {
@@ -473,6 +518,8 @@ class GameEngineService
                     $state['consecutive_sixes'] = 0;
                 }
             } else {
+                // Normal turn pass, OR a team-mode color that just finished and is
+                // now skipped for the remainder of the match.
                 $state['phase'] = 'awaiting_roll';
                 $state['dice'] = null;
                 $state['consecutive_sixes'] = 0;
@@ -511,6 +558,13 @@ class GameEngineService
         // AFTER the match-ending transaction has committed.
         if (($result['winner'] ?? null) !== null) {
             PersistMatchReplay::dispatch($match->id);
+        }
+
+        // If the move passed the turn to a bot, hand it to the server-side driver
+        // (never when the match just ended, and never when the caller is the bot
+        // driver itself).
+        if ($dispatchBots && ($result['winner'] ?? null) === null) {
+            $this->maybeDispatchBotTurn($match, $result['state'] ?? null);
         }
 
         return $result;
@@ -557,6 +611,69 @@ class GameEngineService
 
         // Everyone finished — leave as-is (match should have ended).
         return $state;
+    }
+
+    /**
+     * If the current turn belongs to a bot seat and the match is still live,
+     * hand control to the server-side bot driver (a queued PlayBotTurn job).
+     * This is the ONLY thing that advances a bot's turn online — it never
+     * depends on a human client. Called AFTER an action's transaction commits
+     * so the job reloads a fully-committed authoritative state.
+     *
+     * @param  array<string,mixed>|null  $state  the post-action snapshot, if known
+     */
+    public function maybeDispatchBotTurn(Matchup $match, ?array $state = null): void
+    {
+        if (! is_array($state)) {
+            $state = MatchState::where('match_id', $match->id)->first()?->state;
+        }
+        if (! is_array($state)) {
+            return;
+        }
+        if (($state['winner'] ?? null) !== null || ($state['phase'] ?? null) === 'finished') {
+            return;
+        }
+
+        $turnColor = $state['turn'] ?? null;
+        if ($turnColor === null) {
+            return;
+        }
+
+        // Is the seat whose turn it is a bot? (bots have is_bot = true / no user.)
+        $isBot = (bool) $match->players()->where('color', $turnColor)->value('is_bot');
+        if (! $isBot) {
+            return;
+        }
+
+        PlayBotTurn::dispatch($match->id);
+    }
+
+    /**
+     * Team-mode completion test: have ALL colors on the finisher's team brought
+     * every one of their tokens home? A single teammate finishing is NOT enough
+     * to win — this is what stops the old "one player finishes ⇒ both win" bug.
+     *
+     * @param  array<string,mixed>  $state
+     */
+    private function teamHasFinished(Matchup $match, array $state, string $color): bool
+    {
+        $team = $match->players()->where('color', $color)->value('team');
+        if ($team === null) {
+            // team_mode without an assigned team (should not happen) — fall back
+            // to single-color completion so a match can still end.
+            return true;
+        }
+
+        $teamColors = $match->players()->where('team', $team)->pluck('color')->all();
+        foreach ($teamColors as $teamColor) {
+            $teamColor = strtolower((string) $teamColor);
+            $tokens = $state['tokens'][$teamColor] ?? null;
+            if (! is_array($tokens) || ! $this->rules->isWinner($tokens)) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /**
