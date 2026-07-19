@@ -15,6 +15,7 @@ import '../../../shared/widgets/primary_button.dart';
 import '../../auth/application/auth_controller.dart';
 import '../../game/application/game_config.dart';
 import '../../game/application/game_controller.dart';
+import '../../game/application/online_entry.dart';
 import '../../room/data/room_repository.dart';
 import '../data/matchmaking_repository.dart';
 
@@ -67,9 +68,9 @@ class _MatchmakingScreenState extends ConsumerState<MatchmakingScreen> {
     final res = await ref.read(matchmakingRepositoryProvider).enqueue(mode);
     if (!mounted) return;
     res.when(
-      ok: (roomId) {
-        if (roomId != null) {
-          _enterMatched(roomId);
+      ok: (s) {
+        if (s.matched) {
+          _enterMatched(s);
         } else {
           _pollTimer = Timer.periodic(
               const Duration(seconds: 2), (_) => _poll());
@@ -90,8 +91,8 @@ class _MatchmakingScreenState extends ConsumerState<MatchmakingScreen> {
       if (!mounted) return;
       res.when(
         ok: (s) {
-          if (s.matched && s.roomId != null) {
-            _enterMatched(s.roomId!);
+          if (s.matched) {
+            _enterMatched(s);
           } else if (s.status == 'cancelled' || s.status == 'none') {
             _backToChoosing();
           }
@@ -103,13 +104,31 @@ class _MatchmakingScreenState extends ConsumerState<MatchmakingScreen> {
     }
   }
 
-  Future<void> _enterMatched(int roomId) async {
+  /// Enter the matched game exactly once. Matchmaking rooms auto-start on the
+  /// server, so when a match id is known we navigate straight onto the shared
+  /// board; otherwise we fall back to the lobby, which itself auto-enters the
+  /// match the moment it is in progress.
+  Future<void> _enterMatched(MatchmakingStatus s) async {
     if (_navigated) return;
     _navigated = true;
     _pollTimer?.cancel();
     _elapsedTimer?.cancel();
 
-    final res = await ref.read(roomRepositoryProvider).show(roomId);
+    if (s.matchId != null) {
+      await enterOnlineMatch(context, ref, s.matchId!, onError: (m) {
+        _navigated = false; // allow a retry / re-poll
+        _showError(m);
+        _backToChoosing();
+      });
+      return;
+    }
+
+    if (s.roomId == null) {
+      _navigated = false;
+      return; // nothing to enter yet — keep waiting
+    }
+
+    final res = await ref.read(roomRepositoryProvider).show(s.roomId!);
     if (!mounted) return;
     res.when(
       ok: (room) {

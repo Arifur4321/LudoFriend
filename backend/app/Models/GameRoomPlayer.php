@@ -17,6 +17,7 @@ class GameRoomPlayer extends Model
         'color',
         'team',
         'is_bot',
+        'display_name',
         'is_ready',
         'joined_at',
     ];

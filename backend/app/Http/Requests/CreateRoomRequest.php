@@ -25,4 +25,20 @@ class CreateRoomRequest extends FormRequest
             'settings' => ['nullable', 'array'],
         ];
     }
+
+    /**
+     * Normalise optional inputs so an "accidentally empty" board tier from the
+     * guest UI falls back to the free casual default (RoomService) instead of
+     * tripping the `in:` rule. A genuinely unknown non-empty tier still returns
+     * a clean 422 rather than a 500.
+     */
+    protected function prepareForValidation(): void
+    {
+        if ($this->has('board_tier')) {
+            $tier = $this->input('board_tier');
+            if ($tier === '' || $tier === null || (is_string($tier) && trim($tier) === '')) {
+                $this->merge(['board_tier' => null]);
+            }
+        }
+    }
 }

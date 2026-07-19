@@ -12,13 +12,12 @@ use App\Models\GameRoom;
 use App\Services\RoomService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use RuntimeException;
 
 class RoomController extends Controller
 {
-    public function __construct(private readonly RoomService $rooms)
-    {
-    }
+    public function __construct(private readonly RoomService $rooms) {}
 
     /** Create a room (the caller becomes host + seat 0). */
     public function create(CreateRoomRequest $request): JsonResponse
@@ -27,6 +26,15 @@ class RoomController extends Controller
             $room = $this->rooms->create($request->user(), $request->validated());
         } catch (RuntimeException $e) {
             // Staked-board guard rails (affordability, no bots, bad tier/mode).
+            // Structured, secret-free breadcrumb for debugging create failures.
+            Log::info('room.create.rejected', [
+                'user_id' => $request->user()?->id,
+                'is_guest' => (bool) $request->user()?->is_guest,
+                'mode' => $request->input('mode'),
+                'board_tier' => $request->input('board_tier'),
+                'reason' => $e->getMessage(),
+            ]);
+
             return response()->json(['message' => $e->getMessage()], 422);
         }
 

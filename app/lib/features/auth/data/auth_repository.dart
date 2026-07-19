@@ -55,7 +55,18 @@ class AuthRepository {
       await _persist(user);
       return Ok(user);
     } catch (e) {
-      // Offline fallback — still let them play locally.
+      // Distinguish "the server answered with an error" from "we couldn't reach
+      // the server". A server error (e.g. a 5xx) must SURFACE — silently
+      // returning a token-less local guest is exactly what hid the guest-login
+      // failure before: the player looked signed in, then every authenticated
+      // call (create room, matchmaking) failed for lack of a bearer token.
+      if (e is DioException && e.response != null) {
+        AppLogger.auth(
+            'Guest login server error status=${e.response?.statusCode}');
+        return Err(DioClient.mapError(e));
+      }
+      // Genuine connectivity problem only: degrade gracefully to an offline
+      // local guest so the player can still enjoy offline / bot games.
       final local = AuthUser(
         id: 'local-${DateTime.now().millisecondsSinceEpoch}',
         name: guestName,

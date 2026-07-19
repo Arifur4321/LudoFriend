@@ -5,15 +5,19 @@ namespace App\Services;
 use App\Events\GameStarted;
 use App\Events\PlayerJoinedRoom;
 use App\Events\PlayerLeftRoom;
+use App\Models\FriendLink;
 use App\Models\GameRoom;
 use App\Models\GameRoomPlayer;
-use App\Models\Matchup;
 use App\Models\MatchPlayer;
+use App\Models\Matchup;
 use App\Models\User;
 use App\Models\WalletTransaction;
 use App\Services\Economy\BoardService;
 use App\Services\Economy\WalletService;
+use App\Services\Game\BotIdentityService;
 use App\Services\Game\GameEngineService;
+use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use RuntimeException;
@@ -29,8 +33,8 @@ class RoomService
         private readonly GameEngineService $engine,
         private readonly WalletService $wallet,
         private readonly BoardService $boards,
-    ) {
-    }
+        private readonly BotIdentityService $botIdentities,
+    ) {}
 
     /**
      * Create a room and seat the host at seat 0 / first color.
@@ -260,6 +264,9 @@ class RoomService
                     'team' => $team,
                     'seat' => $p->seat,
                     'is_bot' => $p->is_bot,
+                    // Carry the bot's persisted name onto the match seat so every
+                    // client shows the same, stable name for the whole match.
+                    'display_name' => $p->is_bot ? $p->display_name : null,
                     'stake_paid' => $stakePaid,
                 ]);
                 $turnOrder[] = $p->color;
@@ -290,7 +297,7 @@ class RoomService
      * so they see each other in their friends list next time (idempotent). This
      * is what makes "play together once, then they're saved" work.
      *
-     * @param  \Illuminate\Support\Collection<int,GameRoomPlayer>  $players
+     * @param  Collection<int,GameRoomPlayer>  $players
      */
     private function linkPlayersAsFriends($players): void
     {
@@ -302,7 +309,7 @@ class RoomService
                 if ($a === $b) {
                     continue;
                 }
-                \App\Models\FriendLink::firstOrCreate(
+                FriendLink::firstOrCreate(
                     ['user_id' => $a, 'friend_user_id' => $b],
                     ['status' => 'accepted', 'source' => 'match'],
                 );
@@ -333,18 +340,29 @@ class RoomService
     }
 
     /**
-     * Fill the remaining seats of a room with bot players.
+     * Fill the remaining seats of a room with bot players, each given a
+     * realistic, unique-within-the-room display name. Bots are always ready.
+     * Bot AI / turn / dice logic is unchanged — only the label is added.
      */
     private function fillWithBots(GameRoom $room): void
     {
+        // Names already taken by bots seated in this room, so refills after a
+        // human leaves never collide with an existing bot.
+        $taken = $room->players()->where('is_bot', true)
+            ->pluck('display_name')->filter()->all();
+
         while (! $room->isFull()) {
             $seat = $this->nextFreeSeat($room);
+            $name = $this->botIdentities->pickUnique($taken);
+            $taken[] = $name;
+
             GameRoomPlayer::create([
                 'room_id' => $room->id,
                 'user_id' => null,
                 'seat' => $seat,
                 'color' => $this->colorForSeat($room, $seat),
                 'is_bot' => true,
+                'display_name' => $name,
                 'is_ready' => true,
                 'joined_at' => now(),
             ]);
@@ -401,7 +419,7 @@ class RoomService
      * committed — so a peer reacting to a lobby/start event can never fetch a
      * pre-commit (or rolled-back) room/match state.
      *
-     * @param  array<int,\Illuminate\Contracts\Broadcasting\ShouldBroadcast>  $events
+     * @param  array<int,ShouldBroadcast>  $events
      */
     private function flushBroadcasts(array $events): void
     {

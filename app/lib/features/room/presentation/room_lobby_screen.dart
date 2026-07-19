@@ -278,7 +278,7 @@ class _SeatTile extends StatelessWidget {
     final name = seat == null
         ? 'Waiting…'
         : seat!.isBot
-            ? 'Bot'
+            ? (seat!.name ?? 'Bot') // realistic persisted bot name
             : (seat!.name ?? 'Player');
 
     return Container(

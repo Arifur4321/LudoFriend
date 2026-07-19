@@ -33,8 +33,11 @@ class RoomPlayerModel {
       isBot: j['is_bot'] as bool? ?? false,
       isReady: j['is_ready'] as bool? ?? false,
       userId: u?['id'] is num ? (u!['id'] as num).toInt() : null,
-      name: u?['name'] as String?,
-      avatar: u?['avatar'] as String?,
+      // Seat-level `display_name`/`avatar` cover bots (which have no user
+      // block) and still-empty seats, falling back to the human's account
+      // fields. This is what lets a bot show a realistic name instead of "Bot".
+      name: (u?['name'] as String?) ?? (j['display_name'] as String?),
+      avatar: (u?['avatar'] as String?) ?? (j['avatar'] as String?),
       isGuest: u?['is_guest'] as bool? ?? false,
     );
   }

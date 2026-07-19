@@ -41,6 +41,29 @@ void main() {
     verify(() => storage.guestId).called(1);
   });
 
+  test('guest login surfaces a server error instead of a token-less guest',
+      () async {
+    // Regression guard for the original bug: a 5xx from /auth/guest must NOT be
+    // swallowed into a fake local "success" (which then had no bearer token and
+    // failed every authenticated call like create-room). It must surface.
+    when(() => dio.post(any(), data: any(named: 'data'))).thenThrow(
+      DioException(
+        requestOptions: RequestOptions(path: ''),
+        response: Response(
+          requestOptions: RequestOptions(path: ''),
+          statusCode: 500,
+          data: {'message': 'Server Error'},
+        ),
+        type: DioExceptionType.badResponse,
+      ),
+    );
+
+    final res = await repo.guest(name: 'Tester');
+
+    expect(res, isA<Err<AuthUser>>());
+    verifyNever(() => storage.saveToken(any()));
+  });
+
   test('successful guest login sends device id and persists the token',
       () async {
     final captured = <Map<String, dynamic>>[];

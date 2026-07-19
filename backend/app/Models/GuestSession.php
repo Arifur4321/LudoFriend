@@ -24,8 +24,12 @@ class GuestSession extends Model
     {
         return [
             'last_seen_at' => 'datetime',
-            // Opaque guest re-auth secret is encrypted at rest.
-            'token' => 'encrypted',
+            // NOTE: `token` is intentionally NOT encrypted. It is a high-entropy
+            // opaque secret (Str::random(64)) that is only ever written, never
+            // read (guest re-auth is by device_id + Sanctum). An `encrypted`
+            // cast produced a ~250-char blob that overflowed the column on
+            // MySQL and broke guest login; storing the random value as-is keeps
+            // it opaque, unique-indexable, and comfortably within the column.
         ];
     }
 

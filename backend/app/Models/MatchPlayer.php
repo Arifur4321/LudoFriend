@@ -17,6 +17,7 @@ class MatchPlayer extends Model
         'team',
         'seat',
         'is_bot',
+        'display_name',
         'placement',
         'stake_paid',
         'payout',

@@ -7,12 +7,25 @@ import '../../../core/network/api_result.dart';
 import '../../../core/network/dio_client.dart';
 
 class MatchmakingStatus {
-  const MatchmakingStatus({required this.status, this.roomId, this.roomCode});
+  const MatchmakingStatus({
+    required this.status,
+    this.roomId,
+    this.roomCode,
+    this.matchId,
+  });
   final String status; // none | queued | matched | cancelled
   final int? roomId;
   final String? roomCode;
+  final int? matchId;
 
   bool get matched => status == 'matched' && roomId != null;
+
+  factory MatchmakingStatus.fromJson(Map<String, dynamic> d) => MatchmakingStatus(
+        status: d['status'] as String? ?? 'none',
+        roomId: (d['room_id'] as num?)?.toInt(),
+        roomCode: d['room_code'] as String?,
+        matchId: (d['match_id'] as num?)?.toInt(),
+      );
 }
 
 /// Random matchmaking against the backend FIFO queue. A solo queuer is paired
@@ -28,12 +41,14 @@ class MatchmakingRepository {
           ? (body['data'] as Map).cast<String, dynamic>()
           : <String, dynamic>{};
 
-  /// Enqueue for [mode] ('2p' or '4p'). Returns a room id if paired immediately.
-  Future<Result<int?>> enqueue(String mode) async {
+  /// Enqueue for [mode] ('2p' or '4p'). When a full human table was already
+  /// waiting the ticket comes back already `matched` (with room + match ids),
+  /// so the caller can navigate straight into the started match.
+  Future<Result<MatchmakingStatus>> enqueue(String mode) async {
     try {
       final res = await _dio
           .post(ApiEndpoints.matchmakingEnqueue, data: {'mode': mode});
-      return Ok((_data(res.data)['room_id'] as num?)?.toInt());
+      return Ok(MatchmakingStatus.fromJson(_data(res.data)));
     } catch (e) {
       return Err(DioClient.mapError(e));
     }
@@ -42,12 +57,7 @@ class MatchmakingRepository {
   Future<Result<MatchmakingStatus>> status() async {
     try {
       final res = await _dio.get(ApiEndpoints.matchmakingStatus);
-      final d = _data(res.data);
-      return Ok(MatchmakingStatus(
-        status: d['status'] as String? ?? 'none',
-        roomId: (d['room_id'] as num?)?.toInt(),
-        roomCode: d['room_code'] as String?,
-      ));
+      return Ok(MatchmakingStatus.fromJson(_data(res.data)));
     } catch (e) {
       return Err(DioClient.mapError(e));
     }
